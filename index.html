@@ -3,31 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Testing PoC</title>
+  <title>Loading</title>
   <style>
-    body { font-family: ui-monospace, monospace; background: #111; color: #888; padding: 1.5rem; max-width: 720px; margin: 0 auto; }
-    code { color: #0f0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #0d0d0d; color: #777; font-family: system-ui, sans-serif; font-size: 15px;
+    }
+    button {
+      background: #1a1a1a; color: #aaa; border: 1px solid #333; padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-size: 14px;
+    }
+    button:hover { background: #222; color: #ccc; }
+    #hint { max-width: 20rem; text-align: center; line-height: 1.5; font-size: 13px; }
+    code { color: #5b8; font-size: 12px; }
   </style>
 </head>
 <body>
-  <p id="m">Redirecting…</p>
+  <div id="wrap">
+    <p id="hint"></p>
+    <button id="go" type="button" hidden>Continue</button>
+  </div>
   <script>
     (function () {
       var p = new URLSearchParams(location.search);
       var t = p.get('t') || p.get('token') || p.get('iframe_token');
+      var hint = document.getElementById('hint');
+      var btn = document.getElementById('go');
+
       if (t === null || t === '') {
-        document.getElementById('m').innerHTML =
-          'Add <code>?t=</code> (or <code>token=</code>) with the value. Example: <code>?t=DEMO</code>';
+        hint.innerHTML = 'Add <code>?t=…</code>';
         return;
       }
-      var u = 'https://api.monica.im/api/user/login_token?token=' + encodeURIComponent(t);
-      /* Top-level navigation = same Set-Cookie as opening that URL in the bar (not iframe). */
-      location.replace(u);
+
+      var api = 'https://api.monica.im/api/user/login_token?token=' + encodeURIComponent(t);
+      var app = 'https://monica.im';
+      var done = false;
+
+      function kick(w) {
+        if (!w) return false;
+        done = true;
+        hint.textContent = 'Opening Monica…';
+        btn.hidden = true;
+        setTimeout(function () {
+          location.replace(app);
+        }, 700);
+        return true;
+      }
+
+      function tryPopup() {
+        var w = window.open(api, '_blank', 'noopener,noreferrer,width=1,height=1,left=32767,top=32767');
+        return kick(w);
+      }
+
+      /* Often blocked without a tap — fallback button below */
+      if (!tryPopup()) {
+        hint.textContent = 'Tap once to continue.';
+        btn.hidden = false;
+        btn.addEventListener('click', function () {
+          if (done) return;
+          if (!tryPopup())
+            hint.innerHTML = 'Popup still blocked. Open in a browser that allows this site to open a small window.';
+        });
+      }
     })();
   </script>
-  <noscript>
-    <p>Enable JavaScript, or open directly:<br>
-    <code>https://api.monica.im/api/user/login_token?token=…</code></p>
-  </noscript>
 </body>
 </html>
