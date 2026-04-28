@@ -35,7 +35,7 @@
 
       if (t === null || t === '') {
         hint.innerHTML =
-          'Add <code>?t=…</code> · <code>&reliable=1</code> mismo pestaña (sin popup) · <code>&visible=1</code> popup grande';
+          'Add <code>?t=…</code> · <code>&reliable=1</code> · <code>&visible=1</code> · <code>&nav=1</code> reemplaza esta pestaña por monica (no recomendado)';
         return;
       }
 
@@ -70,36 +70,28 @@
         btn.hidden = true;
 
         var once = false;
-        function gotoApp() {
+        function openMonica() {
           if (once) return;
           once = true;
-          location.replace(app);
+          /* No location.replace en esta pestaña: en muchos casos te “tira” la sesión o dispara el aviso de dispositivo. */
+          if (p.get('nav') === '1') {
+            location.href = app;
+            return;
+          }
+          var m = window.open(app, '_blank', 'noopener,noreferrer');
+          hint.textContent = m ? 'OK' : 'Abrí monica.im en esta barra';
+          if (!m) {
+            hint.innerHTML = 'OK — <a href="' + app + '" rel="noopener">monica.im</a>';
+          }
         }
 
-        /*
-         * 1) load del popup → cookie aplicada (igual que abrir login_token solo).
-         * 2) Un segundo breve (~700ms) suficiente antes de mover la pestaña principal.
-         * 3) Cerramos el popup antes de ir a monica: dos ventanas vivas pueden hacer que Monica
-         *    trate sesión/conexión (“dispositivo desconectado”) en algunos backends.
-         */
-        var fb = setTimeout(function () {
-          try {
-            w.close();
-          } catch (e2) {}
-          setTimeout(gotoApp, 300);
-        }, 45000);
+        var fb = setTimeout(openMonica, 20000);
 
         try {
           w.addEventListener('load', function onLd() {
             w.removeEventListener('load', onLd);
             clearTimeout(fb);
-            setTimeout(function () {
-              try {
-                w.close();
-              } catch (e0) {}
-              /* Pequeño margen tras cerrar, luego mismo patrón que antes (sin 2–3s extra). */
-              setTimeout(gotoApp, 350);
-            }, 720);
+            setTimeout(openMonica, 750);
           });
         } catch (eLoad) {}
 
