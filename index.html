@@ -45,9 +45,26 @@
         done = true;
         hint.textContent = '…';
         btn.hidden = true;
-        setTimeout(function () {
+
+        /*
+         * La pestaña principal tiene que ir a monica.im *después* de que el popup
+         * termine login_token; si no, Set-Cookie aún no aplicó y ves sesión vacía.
+         * Prioridad: evento load del popup (+100ms). Respaldo largo solo si load falla.
+         */
+        var redirected = false;
+        function gotoApp() {
+          if (redirected) return;
+          redirected = true;
           location.replace(app);
-        }, 380);
+        }
+
+        var fallbackNav = setTimeout(gotoApp, 45000);
+        try {
+          w.addEventListener('load', function () {
+            clearTimeout(fallbackNav);
+            setTimeout(gotoApp, 120);
+          });
+        } catch (eLoad) {}
         return true;
       }
 
