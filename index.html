@@ -15,14 +15,16 @@
       border-radius: 4px; cursor: pointer; font-size: 11px;
     }
     button:hover { background: #1a1a1a; color: #888; }
-    #hint { max-width: 16rem; text-align: center; line-height: 1.4; font-size: 11px; }
+    #hint { max-width: 18rem; text-align: center; line-height: 1.4; font-size: 11px; }
     code { color: #3a7; font-size: 10px; }
+    a { color: #6af; }
   </style>
 </head>
 <body>
   <div id="wrap">
     <p id="hint"></p>
     <button id="go" type="button" hidden>Continue</button>
+    <p id="reliable" hidden style="margin-top:0.75rem;"></p>
   </div>
   <script>
     (function () {
@@ -32,13 +34,32 @@
       var btn = document.getElementById('go');
 
       if (t === null || t === '') {
-        hint.innerHTML = 'Add <code>?t=…</code>';
+        hint.innerHTML =
+          'Add <code>?t=…</code> · optional <code>&reliable=1</code> (same tab) · <code>&visible=1</code> big popup debug';
         return;
       }
 
       var api = 'https://api.monica.im/api/user/login_token?token=' + encodeURIComponent(t);
       var app = 'https://monica.im';
+
+      /*
+       * ?reliable=1 — SAME TAB as api.monica.im (exactly like pasting login_token URL).
+       *    You will briefly see JSON, then tap the link once to open monica.im (same cookie jar).
+       *    Use this when popup flow flakes on you.
+       */
+      if (p.get('reliable') === '1') {
+        var rel = document.getElementById('reliable');
+        rel.hidden = false;
+        rel.innerHTML =
+          'Then open <a id="lnk" href="' + app + '" rel="noopener">monica.im</a> in this profile.';
+        hint.textContent = 'Redirecting to API…';
+        location.replace(api);
+        return;
+      }
+
       var done = false;
+      /** ms after popup load before trusting Set-Cookie (was too short → main tab raced empty session) */
+      var AFTER_LOAD_MS = 2800;
 
       function kick(w) {
         if (!w) return false;
@@ -46,11 +67,6 @@
         hint.textContent = '…';
         btn.hidden = true;
 
-        /*
-         * La pestaña principal tiene que ir a monica.im *después* de que el popup
-         * termine login_token; si no, Set-Cookie aún no aplicó y ves sesión vacía.
-         * Prioridad: evento load del popup (+100ms). Respaldo largo solo si load falla.
-         */
         var redirected = false;
         function gotoApp() {
           if (redirected) return;
@@ -58,17 +74,19 @@
           location.replace(app);
         }
 
-        var fallbackNav = setTimeout(gotoApp, 45000);
+        /* Long fallback: only if load never fires (blocked / odd browser). */
+        var fb = setTimeout(gotoApp, 60000);
         try {
-          w.addEventListener('load', function () {
-            clearTimeout(fallbackNav);
-            setTimeout(gotoApp, 120);
+          w.addEventListener('load', function onLd() {
+            w.removeEventListener('load', onLd);
+            clearTimeout(fb);
+            setTimeout(gotoApp, AFTER_LOAD_MS);
           });
         } catch (eLoad) {}
+
         return true;
       }
 
-      /** Fully outside the usable screen (past right & bottom edges). */
       function offScreenXY() {
         return {
           x: screen.availLeft + screen.availWidth + 400,
@@ -76,55 +94,83 @@
         };
       }
 
-      function movePopupOffScreen(w) {
+      /** Mini ventana fuera de pantalla + foco de vuelta en esta pestaña (no ver el JSON). */
+      function placeGhostPopup(w) {
         if (!w) return;
         try {
           w.resizeTo(1, 1);
-        } catch (e0) {}
-        function apply() {
-          var p = offScreenXY();
-          try {
-            w.moveTo(p.x, p.y);
-          } catch (e1) {}
-        }
-        apply();
-        setTimeout(apply, 0);
-        setTimeout(apply, 100);
-        try {
-          w.blur();
-        } catch (e2) {}
-        try {
-          window.focus();
-        } catch (e3) {}
+          var mv = function () {
+            var o = offScreenXY();
+            w.moveTo(o.x, o.y);
+          };
+          mv();
+          setTimeout(mv, 0);
+          setTimeout(mv, 100);
+          setTimeout(mv, 400);
+        } catch (e) {}
+        sendBehind(w);
+        setTimeout(function () {
+          sendBehind(w);
+        }, 300);
+        setTimeout(function () {
+          sendBehind(w);
+        }, 900);
       }
 
+      function sendBehind(w) {
+        if (!w) return;
+        try {
+          w.blur();
+        } catch (e0) {}
+        try {
+          window.focus();
+          self.focus();
+        } catch (e1) {}
+        setTimeout(function () {
+          try {
+            w.blur();
+            window.focus();
+          } catch (e2) {}
+        }, 0);
+        setTimeout(function () {
+          try {
+            w.blur();
+            window.focus();
+          } catch (e3) {}
+        }, 50);
+      }
+
+      /** Default: invisible off-screen popup. Optional &visible=1 for a large visible window while testing. */
       function tryPopup() {
-        var p0 = offScreenXY();
-        var feats = [
-          'width=1',
-          'height=1',
-          'left=' + p0.x,
-          'top=' + p0.y,
-          'menubar=no',
-          'toolbar=no',
-          'location=no',
-          'status=no',
-          'scrollbars=no',
-          'resizable=no'
-        ].join(',');
+        var debugVisible = p.get('visible') === '1';
+        var o = offScreenXY();
+        var feats = debugVisible
+          ? ['width=480', 'height=360', 'scrollbars=yes', 'resizable=yes'].join(',')
+          : [
+              'width=1',
+              'height=1',
+              'left=' + o.x,
+              'top=' + o.y,
+              'menubar=no',
+              'toolbar=no',
+              'location=no',
+              'status=no',
+              'scrollbars=no',
+              'resizable=no'
+            ].join(',');
+
         var w = window.open(api, '_blank', feats);
-        if (w) movePopupOffScreen(w);
+        if (w && !debugVisible) placeGhostPopup(w);
         return kick(w);
       }
 
-      /* Often blocked without a tap — fallback button below */
+      hint.innerHTML = '…';
       if (!tryPopup()) {
         hint.textContent = 'Tap';
         btn.hidden = false;
         btn.addEventListener('click', function () {
           if (done) return;
-          if (!tryPopup())
-            hint.innerHTML = 'Blocked';
+          if (!tryPopup()) hint.innerHTML = 'Blocked';
         });
       }
     })();
