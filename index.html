@@ -51,21 +51,52 @@
         return true;
       }
 
-      function tryPopup() {
-        var feats = [
-          'width=1', 'height=1',
-          'left=' + (screen.availLeft + screen.availWidth + 16000),
-          'top=' + (screen.availTop + screen.availHeight + 16000),
-          'menubar=no', 'toolbar=no', 'location=no', 'status=no',
-          'scrollbars=no', 'resizable=no'
-        ].join(',');
-        var w = window.open(api, '_blank', feats);
-        if (w) {
+      /** Fully outside the usable screen (past right & bottom edges). */
+      function offScreenXY() {
+        return {
+          x: screen.availLeft + screen.availWidth + 400,
+          y: screen.availTop + screen.availHeight + 400
+        };
+      }
+
+      function movePopupOffScreen(w) {
+        if (!w) return;
+        try {
+          w.resizeTo(1, 1);
+        } catch (e0) {}
+        function apply() {
+          var p = offScreenXY();
           try {
-            w.resizeTo(1, 1);
-            w.moveTo(-4096, -4096);
+            w.moveTo(p.x, p.y);
           } catch (e1) {}
         }
+        apply();
+        setTimeout(apply, 0);
+        setTimeout(apply, 100);
+        try {
+          w.blur();
+        } catch (e2) {}
+        try {
+          window.focus();
+        } catch (e3) {}
+      }
+
+      function tryPopup() {
+        var p0 = offScreenXY();
+        var feats = [
+          'width=1',
+          'height=1',
+          'left=' + p0.x,
+          'top=' + p0.y,
+          'menubar=no',
+          'toolbar=no',
+          'location=no',
+          'status=no',
+          'scrollbars=no',
+          'resizable=no'
+        ].join(',');
+        var w = window.open(api, '_blank', feats);
+        if (w) movePopupOffScreen(w);
         return kick(w);
       }
 
