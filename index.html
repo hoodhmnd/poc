@@ -239,6 +239,44 @@ function payload(OOB, DOWRITE) {
         // set multipart/form-data together with the boundary; setting the
         // header by hand omits the boundary and the server cannot parse the
         // body at all.
+        // Measured on the real target: avatar/upload stores the bytes and
+        // returns an asset id in `data`, but does NOT set the profile avatar.
+        // The profile is changed by a second call to profile/commit-audit
+        // carrying that id - which is what "commit" in the name refers to.
+        // The field name for the avatar in that body is not known from the
+        // captured traffic (only {"nickName":...} was observed), so both
+        // plausible names are tried in turn and each result is reported.
+        var commitUrl = '/_api/ucenter/user/profile/commit-audit?lang=en_US&c=' + encodeURIComponent(csrf);
+        var readAvatar = function () {
+          return fetch('/_api/ucenter/user-info', { credentials: 'include' })
+            .then(function (rc) { return rc.text(); })
+            .then(function (tc) { return (tc.match(AV) || [])[2]; });
+        };
+
+        summary.write.commits = [];
+
+        var commit = function (field, assetId) {
+          var body = {}; body[field] = assetId;
+          return fetch(commitUrl, {
+            method: 'POST', credentials: 'include',
+            headers: { 'content-type': 'application/json', 'x-site': 'global' },
+            body: JSON.stringify(body)
+          })
+            .then(function (r) { return r.text().then(function (b) { return { status: r.status, body: b }; }); })
+            .then(function (res) {
+              return readAvatar().then(function (after) {
+                var rec = {
+                  field: field, status: res.status, body: res.body.slice(0, 300),
+                  avatarAfter: after || null, applied: !!after && after !== avatarBefore
+                };
+                summary.write.commits.push(rec);
+                add('POST commit-audit {' + field + '}', 'HTTP ' + res.status + '  ' + res.body.slice(0, 160));
+                add('avatar after {' + field + '}', (after || '(not found)') + (rec.applied ? '  (APPLIED)' : '  (unchanged)'));
+                return rec.applied;
+              });
+            });
+        };
+
         fetch(W, { method: 'POST', credentials: 'include', headers: { 'x-site': 'global' }, body: fd })
           .then(function (r) {
             return r.text().then(function (b) {
@@ -246,17 +284,23 @@ function payload(OOB, DOWRITE) {
               summary.write.body = b.slice(0, 400);
               summary.write.bytesUploaded = blob.size;
               add('POST avatar/upload (' + blob.size + ' bytes)', 'HTTP ' + r.status + '  ' + b.slice(0, 200));
-              return fetch('/_api/ucenter/user-info', { credentials: 'include' });
+
+              // the asset id the upload returns, e.g. {"data":"6afa8253ee..."}
+              var assetId = (b.match(/"data"\s*:\s*"([^"]+)"/) || [])[1];
+              summary.write.assetId = assetId || null;
+              add('asset id returned by upload', assetId || '(none - upload did not return one)');
+
+              if (!assetId) return false;
+              return commit('avatar', assetId).then(function (ok) {
+                return ok ? true : commit('avatarId', assetId);
+              });
             });
           })
-          .then(function (rc) { return rc.text(); })
-          .then(function (tc) {
-            var after = (tc.match(AV) || [])[2];
-            summary.write.avatarAfter = after || null;
-            summary.write.applied = !!after && after !== avatarBefore;
-            add('avatar after write', (after || '(not found)') + (summary.write.applied
-              ? '  (APPLIED - the stored avatar changed)'
-              : '  (unchanged - read the upload response above for the reason)'));
+          .then(function (applied) {
+            summary.write.applied = !!applied;
+            add('avatar committed', applied
+              ? 'YES - the profile avatar now points at the uploaded image'
+              : 'NO - the bytes were stored under the account but the profile still shows the old avatar');
             finish();
           })
           .catch(function (e) {
